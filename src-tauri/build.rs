@@ -7,9 +7,7 @@
 // AppManifest::commands порождает разрешения с именами в kebab-case:
 //   animori_reload            -> allow-animori-reload
 //   animori_restart           -> allow-animori-restart
-//   animori_toggle_fullscreen -> allow-animori-toggle-fullscreen
 //   animori_open_external     -> allow-animori-open-external
-//   animori_cast_panel        -> allow-animori-cast-panel
 //   animori_auth_start        -> allow-animori-auth-start
 //   animori_auth_submit       -> allow-animori-auth-submit
 //   animori_auth_status       -> allow-animori-auth-status
@@ -43,23 +41,12 @@
 
 const COMMANDS: &[&str] = &[
     "animori_reload",
-    // Диагностический канал на время порта под Android TV: пишет строку
-    // в журнал оболочки. Убрать вместе с src/app/diagnostic.ts.
-    "animori_diag",
     // Перезапуск приложения. Параметров нет и быть не может: команда ничего
     // не настраивает, а повторяет запуск с тем, что уже лежит в настройках.
     // Нужна прокси: ключи запуска WebView2 читаются один раз, при создании
     // первого окна, и перезагрузка страницы новый адрес до движка не донесёт.
     "animori_restart",
-    // Полноэкранный режим окна. Параметров нет: только переключение туда-обратно,
-    // чтобы код в окне не мог запереть его в полном экране повторными вызовами.
-    "animori_toggle_fullscreen",
     "animori_open_external",
-    // Картинка в картинке движку по силам самому, а отдать поток устройству — нет:
-    // приёмника трансляции в WebView2 нет. Остаётся зеркало экрана силами Windows,
-    // и команда только показывает системную панель выбора приёмника. Параметров
-    // нет и здесь: адреса панелей зашиты в lib.rs.
-    "animori_cast_panel",
     // Пункт 2.2: вход в AniList. Все четыре выданы только своему окну: окно входа
     // ничего не вызывает, оно лишь показывает чужую форму, а пропуск приезжает
     // в приёмник обычным запросом.

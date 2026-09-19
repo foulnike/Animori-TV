@@ -6,8 +6,6 @@
 //
 // Здесь только ввод и внимание: чего человек хочет, куда переходит фокус
 // и когда панель уезжает с кадра. Что делать с желанием, решает экран.
-import { Bridge } from '@/bridge'
-import { Logger } from '@/utils/logger'
 
 /** Чего человек хочет. Чем нажато — клавишей, пультом, мышью — уже неважно. */
 export type PlayerIntent =
@@ -25,7 +23,6 @@ export type PlayerIntent =
   | 'nextEpisode'
   | 'skip'
   | 'fullscreen'
-  | 'pip'
   | 'exit'
   | 'focusUp'
   | 'focusDown'
@@ -175,15 +172,6 @@ export function readIntent(event: KeyboardEvent, inList: boolean): PlayerIntent 
     case 'а':
     case 'F11':
       return 'fullscreen'
-    // Два соседних желания про одно: куда девать кадр. Полный экран — f,
-    // маленькое окно поверх всего — i (image in image). Буквы взяты из веба,
-    // а не придуманы: так их жмут в чужих плеерах.
-    //
-    // Трансляции здесь нет вовсе: приставка и есть устройство, на котором
-    // смотрят, а зеркалить её экран некуда.
-    case 'i':
-    case 'ш':
-      return 'pip'
     case 's':
     case 'ы':
       return 'skip'
@@ -395,22 +383,3 @@ export function moveFocus(root: ParentNode, intent: PlayerIntent): boolean {
   return goal === null ? true : land(root, goal.name, marks.get(goal.name) ?? 0)
 }
 
-/**
- * Полный экран окна. Просим оболочку, а не тег: своя панель должна остаться
- * своей, а родной рамке WebView2 в кадре делать нечего.
- *
- * Родной полный экран элемента (requestFullscreen) отвергнут совсем: оболочка
- * сама разворачивала окно в ответ на него, и следующий же переключатель видел
- * «уже развернуто» и складывал окно обратно — шапка окна и панель задач
- * оставались на месте.
- *
- * Возвращает новое состояние окна; в браузере оболочка честно отвечает false.
- */
-export async function toggleWindowFullscreen(): Promise<boolean> {
-  try {
-    return await Bridge.shell.toggleFullscreen()
-  } catch (e) {
-    Logger('WARN', 'Плеер: оболочка не дала полный экран', e)
-    return false
-  }
-}

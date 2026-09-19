@@ -124,12 +124,16 @@ import { fetchMalThemes, type ThemeItem, type ThemeLink } from '@/api/animetheme
 import { Bridge } from '@/bridge'
 import { Logger } from '@/utils/logger'
 
-import { canOpenOutside } from '../platform'
+import { canOpenOutside, isWeakPlatform } from '../platform'
 
 import BrandMark from './BrandMark.vue'
 import SakuraBloom from './SakuraBloom.vue'
 
 const props = defineProps<{ malId: number | null }>()
+
+// На приставке нет ни окна выбора папки, ни буфера обмена: кнопки, которые
+// заведомо ничего не сделают, не рисуются вовсе.
+const lite = isWeakPlatform()
 
 /** Шаг перемотки стрелками, секунды. */
 const STEP_SEC = 5
@@ -1090,6 +1094,7 @@ onBeforeUnmount(stop)
 
                 <span class="am-tune__acts">
                   <button
+                    v-if="!lite"
                     v-tip="copied === row.key ? 'Скопировано' : 'Скопировать название и автора'"
                     class="am-tune__act"
                     :class="{ 'am-tune__act--done': copied === row.key }"
@@ -1108,6 +1113,7 @@ onBeforeUnmount(stop)
 
                   <!-- Без звуковой записи скачивать нечего: у темы есть только подпись. -->
                   <button
+                    v-if="!lite"
                     v-tip="
                       row.audio === null
                         ? 'Записи нет'

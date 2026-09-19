@@ -40,6 +40,8 @@ import {
 } from '@/core/proxy'
 import { proxyRestartNeeded, readProxyConfig, saveProxyField } from '@/core/proxy-settings'
 
+import { isWeakPlatform } from '../platform'
+
 import PickBox from './PickBox.vue'
 
 /**
@@ -109,9 +111,15 @@ function currentConfig(): ProxyConfig {
 /** Включённый тумблер с пустым или негодным адресом: трафик пойдёт напрямую. */
 const badConfig = computed(() => enabled.value && !isProxyUsable(currentConfig()))
 
-/** Кнопка перезапуска показывается только тогда, когда он что-то изменит. */
+// Кнопка перезапуска показывается только там, где он что-то изменит. На
+// приставке прокси окну недоступен вовсе (перезапуск лечит ключи запуска
+// WebView2), и сравнивать нечего: исход придёт `windowUnsupported` и кнопка
+// встала бы навечно.
 const needsRestart = computed(
-  () => status.value !== null && proxyRestartNeeded(status.value, currentConfig()),
+  () =>
+    !isWeakPlatform() &&
+    status.value !== null &&
+    proxyRestartNeeded(status.value, currentConfig()),
 )
 
 /**
