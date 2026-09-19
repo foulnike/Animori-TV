@@ -1,0 +1,90 @@
+<!doctype html>
+<!-- Тема стоит в разметке дефолтом: настройки читаются асинхронно, и без неё
+     первый кадр был бы белым. startAppearance() из main.ts перепишет атрибут,
+     когда выбор человека прочитан, и делает это до первой отрисовки. -->
+<html lang="ru" data-am-skin="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AniMori</title>
+    <style>
+      /* Старт. Пока читаются настройки, поднимается тема и разбирается связка,
+         окно пусто, а пустое окно читается как поломка — человек не знает,
+         запустилось ли что-нибудь вообще. Здесь стоит знак программы.
+
+         Знак лежит в разметке, а не во Vue, и это главное в его устройстве:
+         он должен появиться до первого кадра приложения, а не после него.
+
+         Снимает его main.ts, сразу после монтирования — и не из аккуратности,
+         а потому что иначе он останется навсегда: Vue не стирает содержимое
+         корня, он дописывает в него своё. Из-за этого заставка и стоит рядом
+         с #app, а не внутри него: внутри её не отличить от разметки
+         приложения, а снаружи у неё есть своё имя и свой срок.
+
+         Стиль встроен, а не вынесен в theme.css: тот попадает в окно вместе
+         со связкой, то есть позже этой разметки, и на первый кадр не успевает.
+         Отсюда же и подстраховки: --am-bg читается с запасом на случай, что
+         основного оформления ещё нет (в разработке стили вносит сам Vite,
+         уже после первого кадра), а --am-ease-soft — с запасной кривой.
+
+         Подложка своя и тёмная: атрибут темы в этой разметке всегда тёмный,
+         и заставка под него не подстраивается. Для светлой темы окно и без
+         заставки перекрашивается в тот же миг — startAppearance() меняет
+         атрибут сразу после настроек, — так что лишней вспышки она не даёт.
+
+         Дышения, а не вращения и не бега: знак просто сообщает, что процесс
+         идёт. Системная просьба о покое гасит его, как и везде в приложении. */
+      .am-start {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: var(--am-bg, #070a10);
+      }
+
+      .am-start__mark {
+        width: 72px;
+        height: 72px;
+        object-fit: contain;
+        animation: am-start-breathe 1.9s var(--am-ease-soft, cubic-bezier(0.4, 0, 0.2, 1)) infinite;
+      }
+
+      @keyframes am-start-breathe {
+        from {
+          opacity: 0.5;
+          transform: scale(0.93);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        to {
+          opacity: 0.5;
+          transform: scale(0.93);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .am-start__mark {
+          animation: none;
+          opacity: 0.85;
+        }
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-BrpXGdjT.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-KmDsa53b.css">
+  </head>
+  <body>
+    <!-- Корень из src/app/main.ts. Имя id менять нельзя в одном месте. -->
+    <div id="app"></div>
+
+    <!-- Заставка: см. стиль выше. Стоит последней в body, а не внутри #app:
+         Vue не стирает содержимое корня, и внутри она осталась бы под окном
+         до конца сеанса. Классы не совпадают ни с одним классом приложения
+         нарочно — она живёт до него и не должна с ним пересечься. -->
+    <div id="boot" class="am-start">
+      <img class="am-start__mark" src="data:image/png;base64,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" alt="" />
+    </div>
+
+  </body>
+</html>

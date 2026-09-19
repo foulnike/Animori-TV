@@ -1,0 +1,1 @@
+const t="M16 17.1 C12.1 16.6 9.3 13.2 9.6 9.8 C9.8 6.5 12.9 4.5 16 7 C19.1 4.5 22.2 6.5 22.4 9.8 C22.7 13.2 19.9 16.6 16 17.1 Z",r=[0,72,144,216,288];function s(a){return`rotate(${a} 16 16) translate(16 16) scale(1.2291 1.7467) translate(-16 -16)`}function n(a){return`rotate(${a} 16 16) translate(16 16) scale(0.9075 1.7467) translate(-16 -16)`}export{r as S,t as a,s as b,n as s};
