@@ -23,7 +23,7 @@ import { navigate } from './router'
  * иначе карточка тайтла откроется за окошком и останется незамеченной.
  * На `person` закрывать нельзя: окошко только что показало нового человека.
  */
-export type RichAimResult = 'media' | 'person' | 'outside'
+type RichAimResult = 'media' | 'person' | 'outside'
 
 /** Соответствия MAL и AniList этого запуска: описание часто зовёт одно и то же. */
 const known = new Map<number, number | null>()

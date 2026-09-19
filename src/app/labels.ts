@@ -1,6 +1,4 @@
-// Подписи видов и закладок по-русски: один источник для всех экранов.
-// Сервер зовёт виды и закладки заглавной латиницей — человеку это ни о чём.
-// Сюда же словарь строк, приезжающих с AniList: жанры, пол, занятия и прочее.
+// Подписи видов, закладок и строк с AniList по-русски: один источник для экранов.
 // Незнакомый ключ показывается как есть: молчаливая пустота хуже латиницы.
 
 /** Виды аниме: список закрыт перечислением сервера. */
@@ -94,78 +92,6 @@ const LANG_WORDS: Readonly<Record<string, string>> = {
   Urdu: 'Урду',
 }
 
-/** Страны происхождения тайтла и человека. */
-const COUNTRY_WORDS: Readonly<Record<string, string>> = {
-  Japan: 'Япония',
-  'South Korea': 'Южная Корея',
-  China: 'Китай',
-  Taiwan: 'Тайвань',
-}
-
-/** Сезоны года в карточке тайтла. */
-const SEASON_WORDS: Readonly<Record<string, string>> = {
-  Winter: 'Зима',
-  Spring: 'Весна',
-  Summer: 'Лето',
-  Fall: 'Осень',
-}
-
-/**
- * Статус выпуска тайтла. Не путать с закладками своего списка ниже.
- *
- * Ключи в двух видах нарочно: сервер отдаёт NOT_YET_RELEASED, а старые
- * записи склада и часть путей карточки уже приводят вид к «Not Yet
- * Released». Одного вида было мало: анонс показывался латиницей.
- */
-const RELEASE_WORDS: Readonly<Record<string, string>> = {
-  Releasing: 'Выходит',
-  RELEASING: 'Выходит',
-  Finished: 'Завершено',
-  FINISHED: 'Завершено',
-  'Not Yet Released': 'Анонс',
-  NOT_YET_RELEASED: 'Анонс',
-  Cancelled: 'Отменено',
-  CANCELLED: 'Отменено',
-  Hiatus: 'Перерыв',
-  HIATUS: 'Перерыв',
-}
-
-/** Первоисточник тайтла: манга и ранобэ тут именно источники аниме. */
-const SOURCE_WORDS: Readonly<Record<string, string>> = {
-  Original: 'Оригинал',
-  Manga: 'Манга',
-  'Light Novel': 'Ранобэ',
-  Novel: 'Новелла',
-  'Web Novel': 'Веб-новелла',
-  'Visual Novel': 'Визуальная новелла',
-  'Video Game': 'Видеоигра',
-  Game: 'Игра',
-  Doujinshi: 'Додзинси',
-  Anime: 'Аниме',
-  Comic: 'Комикс',
-  'Live Action': 'Лайв-экшн',
-  'Multimedia Project': 'Мультимедийный проект',
-  'Picture Book': 'Книжка с картинками',
-  Other: 'Другое',
-}
-
-/** Связи между тайтлами: ключи — перечисление сервера. */
-const RELATION_WORDS: Readonly<Record<string, string>> = {
-  ADAPTATION: 'Адаптация',
-  PREQUEL: 'Приквел',
-  SEQUEL: 'Сиквел',
-  PARENT: 'Родительская история',
-  SIDE_STORY: 'Сайд-стори',
-  CHARACTER: 'Общие персонажи',
-  SUMMARY: 'Пересказ',
-  ALTERNATIVE: 'Альтернативная версия',
-  SPIN_OFF: 'Спин-офф',
-  COMPILATION: 'Компиляция',
-  CONTAINS: 'Входит в',
-  SOURCE: 'Первоисточник',
-  OTHER: 'Другое',
-}
-
 /**
  * Запасная подпись ссылки из описания. Шикимори часто ставит тег сущности
  * без подписи вовсе: имя подставляет сам сайт. Пока имя едет, в тексте
@@ -224,21 +150,6 @@ export function langWord(language: string | null): string | null {
   return lookup(LANG_WORDS, language)
 }
 
-/** Страна по-русски. */
-export function countryWord(country: string | null): string | null {
-  return lookup(COUNTRY_WORDS, country)
-}
-
-/** Сезон года по-русски. */
-export function seasonWord(season: string | null): string | null {
-  return lookup(SEASON_WORDS, season)
-}
-
-/** Статус выпуска тайтла по-русски. */
-export function releaseWord(status: string | null): string | null {
-  return lookup(RELEASE_WORDS, status)
-}
-
 /** Короткая метка анонса для постера: на плитке места мало. */
 export function soonWord(): string {
   return 'Анонс'
@@ -252,16 +163,6 @@ export function soonHint(): string {
 /** Запасная подпись ссылки из описания, пока имя ещё не добралось. */
 export function linkStubWord(kind: string): string {
   return LINK_STUB_WORDS[kind] ?? 'ссылка'
-}
-
-/** Первоисточник по-русски. */
-export function sourceWord(source: string | null): string | null {
-  return lookup(SOURCE_WORDS, source)
-}
-
-/** Связь между тайтлами по-русски. */
-export function relationWord(relation: string | null): string | null {
-  return lookup(RELATION_WORDS, relation)
 }
 
 /** Закладки своего списка: порядок важен, поэтому массив, а не словарь. */

@@ -33,7 +33,7 @@ export interface MediaLink {
 }
 
 /** Всё, из чего собирается хвост. Вида тайтла здесь нет: только аниме. */
-export interface MediaLinksInput {
+interface MediaLinksInput {
   mediaId: number
   malId: number | null
   /** Адрес страницы, откуда взято описание. Пустая строка — как отсутствие. */
