@@ -11,11 +11,7 @@ interface AppearanceOption {
   title: string
   /** Знак для переключателя в шапке: три слова там шумели бы громче заголовка. */
   mark: string
-  /**
-   * Подсказка под наведением: одним словом названия не объяснить, чем темы
-   * отличаются. Поле обязательное: у необязательного разметка получала бы
-   * `string | undefined`, и у новой темы подсказка молча пропадала бы.
-   */
+/** Поле обязательное: у необязательного подсказка новой темы молча пропадала бы. */
   hint: string
 }
 
@@ -25,28 +21,19 @@ export const APPEARANCES: ReadonlyArray<AppearanceOption> = [
   { name: 'amoled', title: 'AMOLED', mark: '⬤', hint: 'AMOLED: чёрный фон, экономит заряд' },
 ]
 
-/** Тема для разметки: читается переключателем и экраном настроек. */
 export const appearance = ref<AppearanceName>(settings.appearance)
 
 function applyAppearance(name: AppearanceName): void {
   document.documentElement.dataset.amSkin = name
 }
 
-/**
- * Ставит сохранённую тему на документ. Зовётся из main.ts сразу после
- * чтения настроек и до первой отрисовки: смена фона на глазах
- * читается поломкой.
- */
+/** Зовётся до первой отрисовки: смена фона на глазах читается поломкой. */
 export function startAppearance(): void {
   appearance.value = settings.appearance
   applyAppearance(settings.appearance)
 }
 
-/**
- * Меняет тему и запоминает выбор. Разметка перекрашивается сразу,
- * запись в хранилище её не ждёт: тема меняется по свету в комнате,
- * и ждать диск ради этого нечего.
- */
+/** Запись в хранилище не ждём: тему меняют по свету в комнате. */
 export function setAppearance(name: AppearanceName): void {
   appearance.value = name
   applyAppearance(name)

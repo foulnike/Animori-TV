@@ -1,6 +1,5 @@
 // Клиент Aniliberty (anilibria.top): открытый API, адреса HLS лежат в ответе, ни подписей, ни срока.
 // Чужих номеров служба не знает: путь к релизу — точное совпадение имени, год как разводящий признак.
-// Вопроса о наличии здесь нет намеренно: спрашивать пришлось бы лишь то, чего нет у Kodik.
 
 import { Bridge, type HttpResponse } from '@/bridge'
 import { LIFE_ALIB_MATCH, LIFE_ALIB_MISS, isFresh } from '../core/cache-life'
@@ -22,15 +21,13 @@ import { anilibertyLimiter } from './rate-limit'
 const API_BASE = 'https://anilibria.top/api/v1'
 const SITE_BASE = 'https://anilibria.top'
 
-/** Имя источника для учёта доступности: net-health про адреса не знает. */
 export const NET_SOURCE_ANILIBERTY = 'aniliberty'
 export const NET_LABEL_ANILIBERTY = 'AniLiberty'
 
 /**
- * Пауза ограничителю после 429. Джиттер разводит одновременные карточки.
- * Повтора после паузы здесь нет: при MAX_RATE_RETRIES = 1 рекурсия была недостижима,
- * а мёртвый код обещает поведение, которого нет. Повторами распоряжается вызывающий:
- * плеер переспросит следующим названием.
+ * Пауза ограничителю после 429. Джиттер разводит одновременные карточки. Повтора
+ * после паузы здесь нет: повторами распоряжается вызывающий — плеер переспросит
+ * следующим названием.
  */
 const RATE_PAUSE_MS = 1500
 const REQUEST_TIMEOUT_MS = 10000
@@ -38,11 +35,7 @@ const REQUEST_TIMEOUT_MS = 10000
 /** Сколько релиз живёт в памяти: за одно открытие экран спросит его трижды. */
 const RELEASE_MEMORY_MS = 600000
 
-/**
- * Сколько названий пробуем в поиске: романдзи и ещё одно запасное. Второе имя
- * стоит одного запроса и спасает от «ничего не нашлось» — а платит за него
- * человек, который сам открыл плеер, а не полка из полутора сотен плиток.
- */
+/** Сколько названий пробуем в поиске: романдзи и одно запасное. Второе имя стоит одного запроса и спасает от «ничего не нашлось». */
 const SEARCH_TRIES = 2
 
 interface AniName {
@@ -88,16 +81,11 @@ const releaseMemory = new Map<string, { at: number; release: AniRelease }>()
 const pendingRelease = new Map<string, Promise<AniRelease | null>>()
 const pendingMatch = new Map<number, Promise<AniRelease | null>>()
 
-/** Ключ склада соответствия. */
 function matchKey(anilistId: number): string {
   return `ALIB1_${anilistId}`
 }
 
-/**
- * Годна ли запись соответствия. Найденный релиз бессрочен, промах — на сутки:
- * сегодня озвучки нет, завтра есть. Сроки живут в core/cache-life.ts, потому что
- * там же разброс по ключу: иначе вся полка протухла бы одновременно.
- */
+/** Годна ли запись соответствия. Найденный релиз бессрочен, промах — на сутки: сегодня озвучки нет, завтра есть. */
 function matchFresh(key: string, record: MediaCacheRecord<AniMatchRecord>): boolean {
   const life = record.data.release ? LIFE_ALIB_MATCH : LIFE_ALIB_MISS
   return isFresh(key, record.ts, life)
@@ -201,7 +189,6 @@ async function loadRelease(idOrAlias: string): Promise<AniRelease | null> {
   }
 }
 
-/** Ищет релиз по названиям. Первое точное совпадение и есть ответ. */
 async function searchRelease(req: VideoRequest): Promise<AniRelease | null> {
   const wanted = req.titles.map(plain).filter(Boolean)
   if (wanted.length === 0) return null
@@ -295,9 +282,7 @@ function playableEpisodes(release: AniRelease | null): AniEpisode[] {
 
 /**
  * Источник целиком. В реестр он попадает из api/video-sources.ts, а не отсюда.
- *
- * askPresence не объявлен намеренно — см. шапку файла. Метка доступности
- * такой источник не спрашивает вовсе и в решении «нет видео» его не учитывает.
+ * askPresence не объявлен намеренно: метку доступности такой источник не спрашивает.
  */
 export const anilibertySource: VideoSource = {
   id: 'aniliberty',

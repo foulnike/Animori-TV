@@ -1,6 +1,5 @@
 // Литографии студий: у AniList логотипов нет, список берётся у Шикимори раз в сеанс и ложится бессрочно.
-// Сверка по имени: промах — просто чип без картинки, это штатный исход, а не сбой.
-// Отказ помнится четверть часа: иначе каждая карточка шла бы за полным списком к лежачему зеркалу.
+// Промах по имени — чип без картинки (штатный исход); отказ помнится четверть часа, чтобы не долбить лежачее зеркало.
 
 import { isFresh, LIFE_FOREVER, MINUTE_MS } from './cache-life'
 import { dbGet, dbSet } from './db'
@@ -37,7 +36,6 @@ async function load(): Promise<Map<string, string> | null> {
     if (map.size > 0) return map
   }
 
-  // Прошлый поход закончился ничем и с тех пор прошло мало времени.
   if (Date.now() < quietUntil) return null
 
   const reply = await fetchShiki<ShikiStudio[]>('/api/studios')

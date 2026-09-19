@@ -1,6 +1,5 @@
-// Ссылка на человека из описания: номер Шикимори → наша карточка. У тайтлов такого пути нет, номер там и есть MAL.
-// Подпись ссылки не помогает: она почти всегда русская, а AniList по-русски не ищет.
-// Три пути по цене: память сопоставления, склад, сеть. Разрешение в ядре: сеть и склад — не дело экранов.
+// Ссылка на человека из описания: номер Шикимори → наша карточка (у тайтлов номер и есть MAL).
+// Три пути по цене: память, склад, сеть. Разрешение в ядре: сеть и склад — не дело экранов.
 
 import type { PersonRef } from '../api/anilist-people'
 import type { PersonTarget } from '../api/anilist-person'
@@ -12,10 +11,7 @@ import { dbGet, dbSet } from './db'
 import { peekPersonByShiki, rememberRussianPerson, type PersonKind } from './person-title'
 import type { MediaCacheRecord } from './types'
 
-/**
- * Префиксы ключей на складе. Цифра — версия формы записи. Склад общий
- * с остальными кэшами, поэтому ключ обязан быть узнаваем.
- */
+/** Префиксы ключей на складе; склад общий, поэтому ключ обязан быть узнаваем. */
 const KEY_PREFIX: Record<PersonKind, string> = { character: 'SHPC1_', staff: 'SHPS1_' }
 
 /** Знание этого запуска: номер Шикимори -> готовая цель показа. */
@@ -32,12 +28,11 @@ function cacheKey(who: PersonKind, shikiId: number): string {
   return `${KEY_PREFIX[who]}${shikiId}`
 }
 
-/** Цель показа из человека AniList. */
 function toTarget(who: PersonKind, person: PersonRef): PersonTarget {
   return { kind: who, ...person }
 }
 
-/** Читает соответствие со склада. Битая и протухшая запись — как отсутствующая. */
+/** Читает соответствие со склада; битая и протухшая запись — как отсутствующая. */
 async function readCache(who: PersonKind, shikiId: number): Promise<PersonTarget | null> {
   const record = await dbGet<MediaCacheRecord<PersonTarget>>('mediaCache', cacheKey(who, shikiId))
   if (!record || typeof record.ts !== 'number') return null
@@ -50,15 +45,12 @@ async function readCache(who: PersonKind, shikiId: number): Promise<PersonTarget
   return { ...data, kind: who }
 }
 
-/** Кладёт соответствие на склад: номера сторон не меняются никогда. */
+/** Кладёт соответствие на склад: номера сторон не меняются. */
 async function writeCache(who: PersonKind, shikiId: number, data: PersonTarget): Promise<void> {
   await dbSet('mediaCache', { key: cacheKey(who, shikiId), data, ts: Date.now() })
 }
 
-/**
- * Два шага по сети: детали персоны у Шикимори дают латинское и японское имя,
- * по ним ищется человек на AniList.
- */
+// Два шага по сети: детали персоны у Шикимори дают латинское и японское имя, по ним ищется человек на AniList.
 async function resolveOverNet(who: PersonKind, shikiId: number): Promise<PersonTarget | null> {
   const details = await fetchShikiPersonDetails(
     who === 'character' ? 'characters' : 'people',
@@ -76,8 +68,7 @@ async function resolveOverNet(who: PersonKind, shikiId: number): Promise<PersonT
   memory.set(memoryKey(who, shikiId), target)
   await writeCache(who, shikiId, target)
 
-  // Русское имя и описание уже в руках: отдаём складу карточек, чтобы окошко
-  // открылось по-русски и не спрашивало то же самое второй раз.
+  // Русское имя и описание уже в руках: отдаём складу карточек, чтобы окошко открылось по-русски.
   if (details.russian) {
     await rememberRussianPerson(who, found, {
       russian: details.russian,
@@ -92,7 +83,7 @@ async function resolveOverNet(who: PersonKind, shikiId: number): Promise<PersonT
 
 /** Полный путь одного разрешения: память, склад, сеть. */
 async function resolveOne(who: PersonKind, shikiId: number): Promise<PersonTarget | null> {
-  // Быстрый путь: люди открытого тайтла уже сопоставлены складом карточек.
+  // Люди открытого тайтла уже сопоставлены складом карточек.
   const known = peekPersonByShiki(shikiId)
   if (known !== null && known.kind === who) {
     const target = toTarget(who, known.person)
@@ -109,13 +100,8 @@ async function resolveOne(who: PersonKind, shikiId: number): Promise<PersonTarge
   return await resolveOverNet(who, shikiId)
 }
 
-/**
- * Карточка человека по номеру Шикимори или `null`, если соответствия нет.
- *
- * Промахи не запоминаются нарочно: отказ бывает от лежащего зеркала, а не от
- * отсутствия человека, и одна неудача навсегда сделала бы ссылку внешней.
- * Повтор стоит одного нажатия и случается только по воле человека.
- */
+// Карточка человека по номеру Шикимори или null. Промахи не запоминаются нарочно:
+// отказ бывает от лежащего зеркала, и одна неудача навсегда сделала бы ссылку внешней.
 export async function resolveShikiPerson(
   who: PersonKind,
   shikiId: number,

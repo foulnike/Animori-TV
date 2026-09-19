@@ -7,25 +7,17 @@ import { DEFAULT_ROUTE, SCREEN_DEPTH, SCREEN_NAMES, type Route, type ScreenName 
 
 const state = ref<Route>(DEFAULT_ROUTE)
 
-/**
- * Направление смены экрана. `deep` — ушли внутрь, `back` — вышли наружу,
- * `even` — остались на той же глубине: это смена вкладки, направления у неё
- * нет вовсе.
- */
+/// Направление смены экрана: `deep` — внутрь, `back` — наружу, `even` — смена вкладки на той же глубине.
 export type NavDirection = 'deep' | 'back' | 'even'
 
 const direction = ref<NavDirection>('even')
 
-/** Направление последнего перехода. Сменяется вместе с currentRoute. */
 export const navDirection: ComputedRef<NavDirection> = computed(() => direction.value)
 
-/** Адрес, с которого пришли на нынешний: по нему видно, куда ведёт «назад». */
 let before: Route | null = null
 
-/** Экраны, у которых второй кусок адреса — номер сущности. */
 const SCREENS_WITH_ID: ReadonlyArray<ScreenName> = ['media', 'studio', 'player']
 
-/** Как переходить: обычно или заменой текущей записи истории. */
 export interface NavigateOptions {
   replace?: boolean
 }
@@ -37,8 +29,7 @@ function isScreenName(value: string): value is ScreenName {
   return (SCREEN_NAMES as readonly string[]).includes(value)
 }
 
-// Неизвестный или битый адрес ведёт на главную: пустого экрана
-// пользователь видеть не должен ни при каком содержимом строки.
+// Неизвестный или битый адрес ведёт на главную: пустого экрана быть не должно.
 export function parseHash(hash: string): Route {
   const raw = hash.replace(/^#\/?/, '')
   const parts = raw.split('/').filter((part) => part !== '')
@@ -62,27 +53,14 @@ export function buildHash(name: ScreenName, params: Record<string, string> = {})
   return id === undefined ? `#/${name}` : `#/${name}/${encodeURIComponent(id)}`
 }
 
-/**
- * Адрес, с которого пришли на нынешний экран. Нужен тем экранам, которые сами
- * выбирают между шагом назад и переходом вперёд: возврат на уже пройденное
- * историю не растит, а переход вперёд на него же — растит и заводит кольцо.
- */
+/// Адрес, с которого пришли на нынешний экран. Нужен экранам, которые сами выбирают между шагом назад и переходом
+/// вперёд: возврат на пройденное историю не растит, а переход вперёд на него же заводит кольцо.
 export function peekPrevious(): Route | null {
   return before
 }
 
-/**
- * Направление берётся из глубины экранов, а не из самой истории.
- *
- * История помнит, откуда пришли, но не говорит, куда идём: возврат из плеера
- * в карточку и переход из поиска в карточку выглядят в ней одинаково — обе
- * смены адреса. А для экрана они противоположны: в первом случае человек
- * выходит наружу, во втором уходит внутрь, и содержимое должно приходить
- * с той стороны, куда он направился.
- *
- * Два экрана одной глубины дают `even`: из карточки в карточку по франшизе
- * человек не углубляется, он берёт соседний тайтл того же уровня.
- */
+/// Направление берётся из глубины экранов, а не из истории: история помнит, откуда пришли, но не говорит, куда идём.
+/// Два экрана одной глубины дают `even` — это соседний тайтл того же уровня, а не углубление.
 function step(from: ScreenName, to: ScreenName): NavDirection {
   const gap = SCREEN_DEPTH[to] - SCREEN_DEPTH[from]
   if (gap > 0) return 'deep'
@@ -90,7 +68,7 @@ function step(from: ScreenName, to: ScreenName): NavDirection {
   return 'even'
 }
 
-/** Ставит адрес и запоминает прежний. Повтор того же адреса за переход не в счёт. */
+/** Повтор того же адреса за переход не в счёт. */
 function land(next: Route): void {
   const now = state.value
   if (next.name === now.name && next.params.id === now.params.id) return
@@ -113,8 +91,7 @@ export function navigate(
     return
   }
 
-  // replaceState меняет строку адреса молча: hashchange он не поднимает,
-  // и без своего вызова экран остался бы прежним при новом адресе.
+  // replaceState молчит: hashchange он не поднимает, поэтому land() зовём сами.
   window.history.replaceState(null, '', next)
   land(parseHash(next))
 }
@@ -124,8 +101,7 @@ export function goBack(): void {
   window.history.back()
 }
 
-// Возвращает отключатель: без него горячая замена в разработке
-// накопила бы по подписчику на каждую пересборку.
+// Возвращает отключатель: иначе горячая замена в разработке копила бы подписчиков.
 export function startRouter(): () => void {
   const apply = (): void => {
     land(parseHash(window.location.hash))

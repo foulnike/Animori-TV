@@ -1,6 +1,5 @@
 // Витрина каталога для главной: сезон, тренды, лучшее, подбор по жанрам и советы.
-// Три полки одним запросом через псевдонимы GraphQL; склад общий, полки обновляются пачкой.
-// В ленте нет анонсов: они отсекаются запросом, иначе START_DATE_DESC ставит вперёд то, что выйдет через год.
+// Три полки одним запросом через псевдонимы GraphQL. В ленте нет анонсов: они отсекаются запросом.
 
 import {
   isFresh,
@@ -21,35 +20,25 @@ import { anilistQuery } from './anilist'
 import type { MediaBrief } from './anilist-media'
 import { once } from './rate-limit'
 
-/** Сколько плиток просит полка: длинный ряд всё равно не листают до конца. */
 const SHELF_SIZE = 14
 
-/** Сколько советов просим у семени: после склейки повторов останется меньше. */
 const SEED_PAGE = 25
 
 /** Потолок страницы у AniList — пятьдесят записей за запрос. */
 const LOOKUP_PAGE_SIZE = 50
 
-/** Размер страницы ленты. Берётся с запасом к порции показа: своё,
-    скрытое и взрослое выбрасываются после ответа, и ровно порция в запросе
-    значила бы вторую страницу на каждое нажатие «Показать ещё». Лишнее
-    не пропадает: остаток ждёт в ленте следующего нажатия. */
+/** Размер страницы ленты: с запасом к порции показа — своё, скрытое и взрослое выбрасываются после ответа. */
 const FEED_PAGE_SIZE = 40
 
-/** Что в ленте не показывается никогда. Строка уходит в запрос как есть:
-    это перечисление сервера, а не наше значение. */
+/** Что в ленте не показывается никогда. Строка уходит в запрос как есть: это перечисление сервера. */
 const FEED_SKIP_STATUS = 'NOT_YET_RELEASED'
 
-/**
- * Ключи склада. Цифра — поколение формы записи: сменится состав полей плитки,
- * сменится и цифра, и прежние записи просто перестанут находиться.
- */
+/** Ключи склада. Цифра — поколение формы записи: сменится состав полей плитки — сменится и она. */
 const SHELF_PREFIX = 'SHELF1_'
 const TAGS_KEY = 'TAGS1_all'
 const GENRE_PREFIX = 'GENRE1_'
 const RECS_PREFIX = 'RECS1_'
 
-/** Сроки хранения полок по видам. Смысл каждого срока — в cache-life.ts. */
 const SHELF_LIFE: Readonly<Record<ShelfKind, number>> = {
   airing: LIFE_SHELF_AIRING,
   trending: LIFE_SHELF_TRENDING,
@@ -57,23 +46,15 @@ const SHELF_LIFE: Readonly<Record<ShelfKind, number>> = {
   genre: LIFE_SHELF_GENRE,
 }
 
-/**
- * Сколько страниц ленты помнить в запуске. Лента листается вниз и почти
- * никогда не листается обратно, так что памяти нужно немного; потолок стоит
- * ради долгих сеансов с перебором отборов.
- */
+/** Сколько страниц ленты помнить в запуске: лента почти не листается обратно, потолок — ради долгих сеансов. */
 const FEED_MEMORY_MAX = 60
 
-/** Справочник тэгов этого запуска: он один на всё приложение. */
 let tagsMemory: CatalogTag[] | null = null
 
-/** Жанры тайтлов, уже поднятые со склада в этом запуске. */
 const genreMemory = new Map<number, string[]>()
 
-/** Страницы ленты в памяти запуска вместе со временем добычи. */
 const feedMemory = new Map<string, { at: number; page: FeedPage }>()
 
-// Поля плитки без записи хозяина: свои метки витрина ставит по памяти (3.14).
 // Вид записи спрашивается не ради показа, а ради отбора: в советах сервера
 // аниме и манга лежат вперемешку, и отсеивать её надо по ответу.
 const BRIEF_FIELDS = `
@@ -101,12 +82,9 @@ const BRIEF_FIELDS = `
         color
       }`
 
-/** Те же поля куском для запросов с несколькими выборками: три полки
-    в одном запросе иначе повторяли бы их трижды. */
 const BRIEF_FRAGMENT = `fragment Brief on Media {${BRIEF_FIELDS}
 }`
 
-/** Виды полок витрины: отбор и порядок зашиты в запрос, а не в вызов. */
 export type ShelfKind = 'airing' | 'trending' | 'top' | 'genre'
 
 const SHELF_WHERE: Record<ShelfKind, string> = {
@@ -116,9 +94,8 @@ const SHELF_WHERE: Record<ShelfKind, string> = {
   genre: 'genre_in: $genres, sort: [SCORE_DESC]',
 }
 
-// Лишняя переменная в объявлении роняет весь запрос: собирается своя под вид.
-// Сам вид вписан словом: полка манги в приложении не бывает, а через
-// переменную ошибка вызова тихо вернула бы её на главную.
+// Лишняя переменная в объявлении роняет весь запрос, поэтому объявление собирается под вид.
+// Сам вид вписан словом: через переменную ошибка вызова тихо вернула бы мангу на главную.
 function shelfQuery(kind: ShelfKind): string {
   let extra = ''
   if (kind === 'airing') extra = ', $season: MediaSeason, $seasonYear: Int'
@@ -133,8 +110,7 @@ ${BRIEF_FIELDS}
 }`
 }
 
-/** Три полки каталога за один поход. Псевдонимы обязательны: без них
-    сервер увидел бы три одинаковых поля Page и оставил последнее. */
+/** Три полки каталога за один поход. Псевдонимы обязательны: без них сервер оставил бы последнее поле Page. */
 const PACK_QUERY = `${BRIEF_FRAGMENT}
 
 query ($perPage: Int!, $season: MediaSeason, $seasonYear: Int) {
@@ -179,7 +155,6 @@ const GENRE_QUERY = `query ($ids: [Int], $perPage: Int!) {
   }
 }`
 
-/** Справочник тэгов каталога. Переменных нет вовсе: список один на всех. */
 const TAGS_QUERY = `query {
   MediaTagCollection {
     name
@@ -210,7 +185,6 @@ interface BriefReply {
   coverImage?: { large?: string | null; medium?: string | null; color?: string | null } | null
 }
 
-/** Одна выборка страницы: и у полки, и у каждой доли пачки вид общий. */
 interface PageReply {
   pageInfo?: { hasNextPage?: boolean | null } | null
   media?: Array<BriefReply | null> | null
@@ -249,13 +223,12 @@ interface TagsReply {
   MediaTagCollection?: Array<TagReply | null> | null
 }
 
-/** Совет сервера: плитка и вес связи. Вес нужен склейке повторов. */
+/** Совет сервера: плитка и вес связи (нужен склейке повторов). */
 export interface ServerRec {
   brief: MediaBrief
   rating: number
 }
 
-/** Виды полок пачки: три независимые выборки одним походом в сеть. */
 export type PackKind = 'airing' | 'trending' | 'top'
 
 /** Пачка полок каталога. Пустая доля значит «эта полка не встанет». */
@@ -263,14 +236,12 @@ export type ShelfPack = Record<PackKind, MediaBrief[]>
 
 const PACK_KINDS: readonly PackKind[] = ['airing', 'trending', 'top']
 
-/** Тэг каталога: имя для запроса, раздел для меню, метка взрослого. */
 export interface CatalogTag {
   name: string
   category: string
   adult: boolean
 }
 
-/** Порядок ленты. Ключи свои: перечисление сервера наружу не выносится. */
 export type FeedSort = 'score' | 'popular' | 'trending' | 'new'
 
 const FEED_SORT: Readonly<Record<FeedSort, string>> = {
@@ -280,10 +251,7 @@ const FEED_SORT: Readonly<Record<FeedSort, string>> = {
   new: 'START_DATE_DESC',
 }
 
-/**
- * Отбор подбора: что показывать в ленте главной.
- * Пустые списки и пустые годы значат «весь каталог».
- */
+/** Отбор подбора: что показывать в ленте главной. Пустые списки и годы значат «весь каталог». */
 export interface CatalogPick {
   genres: string[]
   tags: string[]
@@ -293,22 +261,16 @@ export interface CatalogPick {
   sort: FeedSort
 }
 
-/** Страница ленты: плитки и признак продолжения. */
 export interface FeedPage {
   items: MediaBrief[]
   hasNext: boolean
 }
 
-/** Отбор по умолчанию: весь каталог по оценке. */
 export function emptyPick(): CatalogPick {
   return { genres: [], tags: [], formats: [], yearFrom: null, yearTo: null, sort: 'score' }
 }
 
-/**
- * Сужен ли отбор. Порядок сюда не входит сознательно: смена сортировки
- * меняет ленту, но не значит, что хозяин что-то отобрал, и прятать из-за
- * неё полки витрины было бы неожиданно.
- */
+/** Сужен ли отбор. Порядок сюда не входит: смена сортировки меняет ленту, но не значит, что хозяин что-то отобрал. */
 export function pickIsSet(pick: CatalogPick): boolean {
   return (
     pick.genres.length > 0 ||
@@ -319,7 +281,6 @@ export function pickIsSet(pick: CatalogPick): boolean {
   )
 }
 
-/** Ключ отбора для памяти запуска: одинаковый отбор — одна загрузка. */
 export function pickKey(pick: CatalogPick): string {
   return [
     pick.genres.slice().sort().join('+'),
@@ -341,13 +302,7 @@ function textOrNull(value: string | null | undefined): string | null {
   return typeof value === 'string' && value.trim() !== '' ? value : null
 }
 
-/**
- * Ответ сервера об аниме в плитку показа. Без номера — не запись.
- *
- * Манга отбрасывается здесь, а не у вызывающего: полки спрашивают аниме сами,
- * но советы сервера мешают виды, и один пропущенный отбор снова привёл бы
- * мангу на главную. Число глав больше не читается: у аниме его не бывает.
- */
+/** Ответ сервера об аниме в плитку показа. Без номера — не запись; манга отбрасывается здесь. */
 function toBrief(item: BriefReply | null | undefined): MediaBrief | null {
   if (!item || typeof item.id !== 'number') return null
   if (item.type === 'MANGA') return null
@@ -374,7 +329,6 @@ function toBrief(item: BriefReply | null | undefined): MediaBrief | null {
   }
 }
 
-/** Плитки из ответа одной выборки. Мусор и манга отсеиваются по пути. */
 function toBriefs(media: Array<BriefReply | null> | null | undefined): MediaBrief[] {
   if (!Array.isArray(media)) return []
 
@@ -386,7 +340,6 @@ function toBriefs(media: Array<BriefReply | null> | null | undefined): MediaBrie
   return items
 }
 
-/** Текущий сезон года для полки «Сейчас выходит». */
 export function currentSeason(): { season: string; seasonYear: number } {
   const now = new Date()
   const month = now.getMonth()
@@ -394,17 +347,12 @@ export function currentSeason(): { season: string; seasonYear: number } {
   return { season, seasonYear: now.getFullYear() }
 }
 
-/**
- * Ключ полки на складе. У жанровой в ключе сам отбор: «фэнтези» и «фэнтези
- * с драмой» — разные полки, и путать их нельзя. Жанры сортируются, иначе
- * порядок нажатий в меню плодил бы записи об одном и том же.
- */
+/** Ключ полки на складе. У жанровой в ключе сам отбор, жанры сортируются: иначе порядок нажатий плодил бы записи. */
 function shelfKey(kind: ShelfKind, genres?: string[]): string {
   if (kind !== 'genre') return `${SHELF_PREFIX}${kind}`
   return `${SHELF_PREFIX}genre_${(genres ?? []).slice().sort().join('+')}`
 }
 
-/** Полка со склада, если она там есть и не просрочена. */
 async function readShelf(kind: ShelfKind, genres?: string[]): Promise<MediaBrief[] | null> {
   const key = shelfKey(kind, genres)
   const stored = await dbGet<MediaCacheRecord<MediaBrief[]>>('mediaCache', key)
@@ -414,17 +362,13 @@ async function readShelf(kind: ShelfKind, genres?: string[]): Promise<MediaBrief
   return stored.data
 }
 
-/**
- * Кладёт полку на склад. Пустая не пишется: полка не встала из-за отказа,
- * и запоминать этот отказ на шесть часов было бы худшим из решений.
- */
+/** Кладёт полку на склад. Пустая не пишется: полка не встала из-за отказа, и помнить его шесть часов незачем. */
 async function writeShelf(kind: ShelfKind, items: MediaBrief[], genres?: string[]): Promise<void> {
   if (items.length === 0) return
 
   await dbSet('mediaCache', { key: shelfKey(kind, genres), data: items, ts: Date.now() })
 }
 
-/** Сетевой поход за одной полкой. */
 async function loadShelf(kind: ShelfKind, genres?: string[]): Promise<MediaBrief[]> {
   const vars: Record<string, unknown> = { perPage: SHELF_SIZE }
   if (kind === 'airing') Object.assign(vars, currentSeason())
@@ -447,10 +391,7 @@ async function loadShelf(kind: ShelfKind, genres?: string[]): Promise<MediaBrief
   return items
 }
 
-/**
- * Полка каталога. Склад, затем сеть; одинаковые вопросы склеиваются.
- * Отказ — пустой массив: полка просто не встанет.
- */
+/** Полка каталога: склад, затем сеть; одинаковые вопросы склеиваются. Отказ — пустой массив. */
 export async function fetchShelf(kind: ShelfKind, genres?: string[]): Promise<MediaBrief[]> {
   if (kind === 'genre' && (genres === undefined || genres.length === 0)) return []
 
@@ -473,7 +414,6 @@ async function readPack(): Promise<ShelfPack | null> {
   return { airing, trending, top }
 }
 
-/** Сетевой поход за пачкой и запись всех трёх полок на склад. */
 async function loadPack(): Promise<ShelfPack> {
   const vars: Record<string, unknown> = { perPage: SHELF_SIZE, ...currentSeason() }
   const reply = await anilistQuery<PackReply>(PACK_QUERY, vars)
@@ -502,12 +442,8 @@ async function loadPack(): Promise<ShelfPack> {
 }
 
 /**
- * Сезон, тренд и лучшее одним походом. Отказ роняет всю пачку разом —
- * это и есть плата за один запрос вместо трёх, но полки каталога всё
- * равно приходили или не приходили вместе: провод и лимит у них общие.
- *
- * Со склада пачка отдаётся только целиком: доля просрочена — идём в сеть
- * за всеми тремя, потому что запрос всё равно один.
+ * Сезон, тренд и лучшее одним походом. Со склада пачка отдаётся только целиком:
+ * доля просрочена — идём в сеть за всеми тремя, потому что запрос всё равно один.
  */
 export async function fetchShelfPack(): Promise<ShelfPack> {
   const stored = await readPack()
@@ -517,11 +453,9 @@ export async function fetchShelfPack(): Promise<ShelfPack> {
 }
 
 /**
- * Запрос страницы ленты под отбор. Объявление переменных собирается вместе
- * с условием: незанятая переменная — ошибка запроса целиком.
- *
- * Год приходит границами нечёткой даты: у AniList это целое вида ГГГГММДД,
- * и «с 2010 года» записывается как 20100000, а «по 2015» — как 20151231.
+ * Запрос страницы ленты под отбор. Объявление переменных собирается вместе с условием:
+ * незанятая переменная — ошибка запроса целиком.
+ * Год приходит границами нечёткой даты: у AniList это целое вида ГГГГММДД.
  */
 function feedQuery(pick: CatalogPick, page: number): { query: string; vars: Record<string, unknown> } {
   const decls = ['$page: Int!', '$perPage: Int!']
@@ -558,17 +492,13 @@ function feedQuery(pick: CatalogPick, page: number): { query: string; vars: Reco
     vars.till = pick.yearTo * 10000 + 1231
   }
 
-  // Анонсы вон из ленты: у невышедшего нет ни серий, ни оценки, и лента
-  // подбора из одних обещаний — это лента, из которой нечего смотреть.
+  // Анонсы вон из ленты: у невышедшего нет ни серий, ни оценки.
   where.push(`status_not_in: [${FEED_SKIP_STATUS}]`)
 
-  // Порядок по оценке требует самой оценки. Запись без счёта сервер держит
-  // не в хвосте, а рядом с сотней, и первые страницы ленты уходили
-  // безвестному вперемешку с невышедшим.
+  // Порядок по оценке требует самой оценки: запись без счёта сервер держит рядом с сотней, а не в хвосте.
   if (pick.sort === 'score') where.push('averageScore_greater: 0')
 
-  // Порядок вписывается словом из закрытого списка: переменной сюда нельзя,
-  // сервер ждёт перечисление, а чужая строка в запросе — чужая строка.
+  // Порядок вписывается словом из закрытого списка: сервер ждёт перечисление, а не строку.
   where.push(`sort: [${FEED_SORT[pick.sort]}, ID_DESC]`)
 
   const query = `${BRIEF_FRAGMENT}
@@ -587,11 +517,9 @@ query (${decls.join(', ')}) {
   return { query, vars }
 }
 
-/** Кладёт страницу ленты в память запуска, придерживая её размер. */
 function rememberFeed(key: string, page: FeedPage): void {
   if (page.items.length === 0) return
 
-  // Map помнит порядок вставки, поэтому старейший ключ — первый.
   if (feedMemory.size >= FEED_MEMORY_MAX) {
     const oldest = feedMemory.keys().next()
     if (!oldest.done) feedMemory.delete(oldest.value)
@@ -600,7 +528,6 @@ function rememberFeed(key: string, page: FeedPage): void {
   feedMemory.set(key, { at: Date.now(), page })
 }
 
-/** Сетевой поход за страницей ленты. */
 async function loadFeed(pick: CatalogPick, page: number, key: string): Promise<FeedPage> {
   const { query, vars } = feedQuery(pick, page)
 
@@ -621,14 +548,9 @@ async function loadFeed(pick: CatalogPick, page: number, key: string): Promise<F
 }
 
 /**
- * Страница ленты подбора. Отказ сети наверх не поднимается: лента живёт
- * долго, и одна оборванная страница не повод показывать ошибку вместо
- * уже набранного.
- *
- * Страницы помнятся четверть часа в памяти запуска, а не на складе: отборов
- * и порядков бесконечно много, и склад забился бы записями, которые больше
- * никто не спросит. Четверти часа хватает на то, ради чего это делается —
- * «ушёл на карточку, вернулся, листаю дальше» без повторной загрузки.
+ * Страница ленты подбора. Отказ сети наверх не поднимается: одна оборванная страница
+ * не повод показывать ошибку вместо уже набранного. Страницы помнятся четверть часа
+ * в памяти запуска, а не на складе: отборов и порядков бесконечно много.
  */
 export async function fetchFeed(pick: CatalogPick, page: number): Promise<FeedPage> {
   const key = `${pickKey(pick)}|${page}`
@@ -639,7 +561,6 @@ export async function fetchFeed(pick: CatalogPick, page: number): Promise<FeedPa
   return await once(`feed-${key}`, () => loadFeed(pick, page, key))
 }
 
-/** Сетевой поход за справочником тэгов и запись его на склад. */
 async function loadTags(): Promise<CatalogTag[]> {
   const reply = await anilistQuery<TagsReply>(TAGS_QUERY, {})
   const list = reply.data?.MediaTagCollection
@@ -674,16 +595,11 @@ async function loadTags(): Promise<CatalogTag[]> {
 }
 
 /**
- * Справочник тэгов каталога для меню отбора.
+ * Справочник тэгов каталога для меню отбора. Тэги-спойлеры выброшены: сам список
+ * читается до открытия карточки, и «главный герой умирает» в меню — испорченное
+ * аниме ещё до выбора. Взрослые остаются с меткой.
  *
- * Тэги-спойлеры выброшены: сам список читается до открытия карточки,
- * и строка вроде «главный герой умирает» в меню отбора — испорченное аниме
- * ещё до выбора. Взрослые остаются с меткой: пускать их в показ решает
- * не справочник, а политика показа взрослого.
- *
- * Полторы тысячи строк не меняются неделями, поэтому справочник живёт
- * на складе месяц. Раньше он приезжал заново на каждый запуск программы,
- * хотя открывают меню отбора далеко не в каждом сеансе.
+ * Полторы тысячи строк не меняются неделями, поэтому справочник живёт на складе месяц.
  */
 export async function fetchTags(): Promise<CatalogTag[]> {
   if (tagsMemory) return tagsMemory
@@ -702,7 +618,6 @@ export async function fetchTags(): Promise<CatalogTag[]> {
   return await once('tags', loadTags)
 }
 
-/** Сетевой поход за советами и запись их на склад. */
 async function loadRecs(mediaId: number, key: string): Promise<ServerRec[]> {
   const reply = await anilistQuery<RecsReply>(RECS_QUERY, { id: mediaId, perPage: SEED_PAGE })
   const edges = reply.data?.Media?.recommendations?.edges
@@ -721,9 +636,7 @@ async function loadRecs(mediaId: number, key: string): Promise<ServerRec[]> {
 
   Logger('API', `Советы для ${mediaId}: пришло ${found.length}`)
 
-  // Пустой ответ тоже пишется: у тайтла может не быть ни одной связи,
-  // и суточная память об этом дешевле, чем спрашивать снова при каждом
-  // пересчёте вкуса. Сутки — не навсегда, голоса за связи ещё наберутся.
+  // Пустой ответ тоже пишется: у тайтла может не быть ни одной связи, и суточная память дешевле нового запроса.
   void dbSet('mediaCache', { key, data: found, ts: Date.now() }).catch((e) => {
     Logger('WARN', `Советы для ${mediaId}: на склад не легли`, e)
   })
@@ -732,12 +645,8 @@ async function loadRecs(mediaId: number, key: string): Promise<ServerRec[]> {
 }
 
 /**
- * Советы сервера для семени «по мотивам». Мангу отсеивает разбор ответа,
- * поэтому отбор по виду здесь больше не нужен.
- *
- * Связи набираются голосами месяцами, так что сутки хранения ничего
- * не портят, зато перебор семян по любимым записям больше не превращается
- * в очередь запросов при каждом заходе на главную.
+ * Советы сервера для семени «по мотивам». Мангу отсеивает разбор ответа.
+ * Связи набираются голосами месяцами, так что сутки хранения ничего не портят.
  */
 export async function fetchRecsFor(mediaId: number): Promise<ServerRec[]> {
   const key = `${RECS_PREFIX}${mediaId}`
@@ -762,11 +671,7 @@ async function readGenres(mediaId: number): Promise<string[] | null> {
 
 /**
  * Жанры аниме пачками: профиль вкуса считается по любимым записям.
- *
- * Спрашивается только то, чего нет на складе. У постоянного хозяина список
- * любимого меняется медленно, так что после первого пересчёта пачек в сети
- * обычно не остаётся вовсе, а прежде тридцать записей стоили запроса
- * при каждом заходе на главную.
+ * Спрашивается только то, чего нет на складе.
  */
 export async function fetchGenreMap(ids: number[]): Promise<Map<number, string[]>> {
   const found = new Map<number, string[]>()
@@ -815,8 +720,7 @@ export async function fetchGenreMap(ids: number[]): Promise<Map<number, string[]
       found.set(item.id, genres)
       genreMemory.set(item.id, genres)
 
-      // Бессрочная запись о пустоте закрыла бы вопрос навсегда, а жанры
-      // у свежего анонса ещё проставят: пустое живёт только в памяти запуска.
+      // Бессрочная запись о пустоте закрыла бы вопрос навсегда: пустое живёт только в памяти запуска.
       if (genres.length === 0) continue
 
       void dbSet('mediaCache', { key: `${GENRE_PREFIX}${item.id}`, data: genres, ts }).catch((e) => {
@@ -828,11 +732,7 @@ export async function fetchGenreMap(ids: number[]): Promise<Map<number, string[]
   return found
 }
 
-/**
- * Забыть память запуска: справочник тэгов, жанры и страницы ленты.
- * Зовётся при ручной очистке склада — иначе очищенные записи продолжали бы
- * жить в памяти до перезапуска, и кнопка выглядела бы сломанной.
- */
+/** Забыть память запуска: справочник тэгов, жанры и страницы ленты. Зовётся при ручной очистке склада. */
 export function forgetCatalogMemory(): void {
   tagsMemory = null
   genreMemory.clear()

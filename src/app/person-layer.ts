@@ -9,16 +9,11 @@ import type { PersonTarget } from '@/api/anilist-person'
 /** Кто показан прямо сейчас. `null` — окошка нет. */
 export const shownPerson = shallowRef<PersonTarget | null>(null)
 
-/**
- * Открывает окошко человека. Зовётся и при уже открытом окошке: ссылка из
- * описания одного человека ведёт на другого, и окошко само положит прежнего
- * в свою историю.
- */
+/** Зовётся и при открытом окошке: ссылка из описания ведёт на другого человека. */
 export function openPerson(target: PersonTarget): void {
   shownPerson.value = target
 }
 
-/** Закрывает окошко. */
 export function closePerson(): void {
   shownPerson.value = null
 }

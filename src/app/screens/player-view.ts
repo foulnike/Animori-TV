@@ -1,5 +1,4 @@
 // Данные экрана просмотра: карточка, перебор источников, озвучки, серии, ссылки.
-// О источниках знаем лишь то, что они в реестре: третий источник — одна строка в api/video-sources.ts.
 // Ссылки не кэшируются (живут часы); адрес обновляем молча (renew), открытый refresh — когда молча не помогло.
 
 import { computed, ref, type ComputedRef, type Ref } from 'vue'
@@ -23,7 +22,6 @@ import { goBack, navigate, peekPrevious } from '../router'
 
 import { peekPick, rememberPick, whenWatchReady } from './player-keep'
 
-/** Озвучка в выборке: источник и его ключ едут вместе с подписью. */
 export interface VoiceRow {
   /** Ключ вида aniliberty:9000 — имена озвучек у источников пересекаются. */
   key: string
@@ -34,7 +32,6 @@ export interface VoiceRow {
   episodes: number
 }
 
-/** Кнопка качества. */
 export interface QualityRow {
   height: number
   label: string
@@ -63,7 +60,7 @@ export interface PlayerView {
   pickHeight: (height: number) => void
   nextEpisode: () => void
   refresh: () => void
-  /** Молча взять свежий адрес того же, что играет. Ответ: вышло или нет. */
+  /** Молча взять свежий адрес того, что играет. Ответ: вышло или нет. */
   renew: () => Promise<boolean>
   openCard: () => void
 }
@@ -71,7 +68,6 @@ export interface PlayerView {
 /** Начальное качество: выше 720 без спроса не берём — канал бывает узким. */
 const DEFAULT_HEIGHT = 720
 
-/** Строка серии для полки и заголовка. */
 export function episodeLabel(item: VideoEpisode): string {
   const name = item.title?.trim() ?? ''
   return name === '' ? `Серия ${item.number}` : `${item.number}. ${name}`
@@ -81,10 +77,8 @@ function describe(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-/**
- * Собирает состояние просмотра вокруг номера аниме из адреса.
- * Номер показа гасит ответы, пришедшие уже к другому выбору.
- */
+/** Собирает состояние просмотра вокруг номера аниме из адреса: номер показа гасит ответы,
+ *  пришедшие уже к другому выбору. */
 export function usePlayer(mediaId: Ref<number>): PlayerView {
   const card = ref<MediaCard | null>(null)
   const busy = ref(true)
@@ -99,7 +93,6 @@ export function usePlayer(mediaId: Ref<number>): PlayerView {
   /** Счётчик добора русского имени: без него заголовок не пересчитается. */
   const nameStamp = ref(0)
 
-  /** Номер показа: ответ на прошлый выбор пришёл не вовремя. */
   let run = 0
 
   const mainTitle = computed<string>(() => {
@@ -133,7 +126,6 @@ export function usePlayer(mediaId: Ref<number>): PlayerView {
     }))
   })
 
-  /** Что известно об аниме до обращения к источникам. */
   function request(): VideoRequest | null {
     const found = card.value
     if (found === null) return null
@@ -151,13 +143,8 @@ export function usePlayer(mediaId: Ref<number>): PlayerView {
     }
   }
 
-  /**
-   * Ссылки на выбранную серию. Запрашиваются в последний момент.
-   *
-   * `quiet` — замена адреса под играющим кадром: ни заслонки, ни жалоб,
-   * ни обнулённого stream. Ответ говорит, вышло ли: решать, показывать
-   * ли отказ, будет экран.
-   */
+  /** Ссылки на выбранную серию, запрашиваются в последний момент. `quiet` — замена адреса под играющим
+   *  кадром: ни заслонки, ни жалоб, ни обнулённого `stream`; ответ говорит, вышло ли. */
   async function askLink(mine: number, quiet: boolean): Promise<boolean> {
     const req = request()
     const row = voices.value.find((v) => v.key === voiceKey.value)
@@ -172,9 +159,8 @@ export function usePlayer(mediaId: Ref<number>): PlayerView {
       let found = await source.resolve(req, row.voiceId, episode.value)
       if (mine !== run) return false
 
-      // Час в подписи округляется вверх, поэтому ссылка на исходе срока — это
-      // чаще всего невезение, а не приговор: второй вопрос обычно приносит
-      // следующий час. Спрашиваем сами, а не зовём человека нажать кнопку.
+      // Час в подписи округляется вверх, поэтому ссылка на исходе срока — чаще невезение: второй вопрос
+      // обычно приносит следующий час. Спрашиваем сами, а не зовём человека нажимать кнопку.
       if (found !== null && !isStreamFresh(found)) {
         Logger('WARN', `Плеер: источник ${row.sourceId} отдал ссылку на исходе срока, спрашиваю снова`)
 
@@ -221,7 +207,6 @@ export function usePlayer(mediaId: Ref<number>): PlayerView {
     await askLink(mine, false)
   }
 
-  /** Серии выбранной озвучки, затем ссылки на нужную из них. */
   async function openVoice(mine: number, wanted: number): Promise<void> {
     const req = request()
     const row = voices.value.find((v) => v.key === voiceKey.value)
@@ -286,7 +271,6 @@ export function usePlayer(mediaId: Ref<number>): PlayerView {
     rememberPick(mediaId.value, voiceKey.value, episode.value, height.value)
   }
 
-  /** Полный заход: карточка, источники, серии, ссылки. */
   async function load(): Promise<void> {
     const mine = ++run
     const id = mediaId.value
@@ -338,8 +322,8 @@ export function usePlayer(mediaId: Ref<number>): PlayerView {
         return
       }
 
-      // Прошлый выбор главнее первой строки выборки. Ждём хранилище здесь,
-      // а не на входе: к этой строке оно давно ответило пока шла сеть.
+      // Прошлый выбор главнее первой строки выборки. Хранилище ждём здесь, а не на входе: к этой строке
+      // оно давно ответило, пока шла сеть.
       await whenWatchReady()
       if (mine !== run) return
 
@@ -400,26 +384,14 @@ export function usePlayer(mediaId: Ref<number>): PlayerView {
     void resolve(++run)
   }
 
-  /**
-   * Молчаливая замена адреса. Кадр не гасится и жалоба не пишется: пока
-   * старая ссылка ещё жива, человеку не на что смотреть, а когда новая
-   * приедет, экран пересядет на ту же секунду сам.
-   */
+  /** Молчаливая замена адреса: кадр не гасится и жалоба не пишется — когда новая ссылка приедет,
+   *  экран пересядет на ту же секунду сам. */
   async function renew(): Promise<boolean> {
     return await askLink(++run, true)
   }
 
-  /**
-   * Уход на карточку аниме.
-   *
-   * Пришли с неё — делаем шаг назад, а не шаг вперёд на тот же адрес:
-   * иначе в истории копится «карточка → плеер → карточка», и кнопка «назад»
-   * возвращает в плеер, из которого только что вышли.
-   *
-   * Пришли иначе (ссылка, продолжение с главной) — меняем запись плеера
-   * на карточку: плеер — конечная точка, и возвращаться в него кнопкой
-   * «назад» человек не просит.
-   */
+  /** Уход на карточку аниме. Пришли с неё — шаг назад, иначе в истории копится «карточка → плеер → карточка».
+   *  Пришли иначе — меняем запись плеера на карточку: плеер конечная точка, возвращаться в него не просят. */
   function openCard(): void {
     const id = mediaId.value
     if (id === 0) return

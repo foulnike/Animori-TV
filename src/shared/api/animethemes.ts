@@ -1,6 +1,5 @@
 // Клиент AnimeThemes.moe: опенинги и эндинги по MAL ID, GraphQL.
-// Отказ приходит с кодом 200 и лежит в errors: по одному статусу отказ не отличить от «тем нет».
-// Номер — из слага (sequence врёт), исполнители свёртываются по имени, версии (OP1-EN) склеиваются.
+// Отказ приходит с кодом 200 и лежит в errors: по статусу его не отличить от «тем нет».
 
 import { Bridge, type HttpResponse } from '@/bridge'
 import { CACHE_TIME } from '../core/constants'
@@ -10,20 +9,10 @@ import { Logger } from '../utils/logger'
 import type { MediaCacheRecord } from '../core/types'
 import { animeThemesLimiter } from './rate-limit'
 
-/**
- * Адрес запроса. Собран конкатенацией, как и прежний: литерал схемы
- * в шаблонной строке ломался при отправке.
- */
+/** Адрес запроса. Собран конкатенацией: литерал схемы в шаблонной строке ломался при отправке. */
 const API_URL = 'https://graphql.animethemes.moe/'
 
-/**
- * Тело запроса. Переменная одна: сервис принимает список идентификаторов,
- * но нам всегда нужен один тайтл, и подстановка через переменную избавляет
- * от склейки строк с чужой строкой внутри.
- *
- * site: MAL — площадка, по которой ищем. Имя перечисления, не подпись:
- * в JSON:API та же площадка звалась MyAnimeList.
- */
+/** site: MAL — площадка поиска; имя перечисления, не подпись: в JSON:API та же площадка звалась MyAnimeList. */
 const THEMES_QUERY = `query Themes($malId: [Int!]) {
   findAnimeByExternalSite(site: MAL, id: $malId) {
     animethemes {
@@ -41,30 +30,20 @@ const THEMES_QUERY = `query Themes($malId: [Int!]) {
   }
 }`
 
-/**
- * Имя источника для учёта доступности. Именно имя, а не адрес: net-health по замыслу
- * не знает ни одного хоста, иначе превратится в список заблокированного.
- */
+/** Имя источника для учёта доступности: net-health по замыслу не знает ни одного хоста. */
 export const NET_SOURCE_ANIMETHEMES = 'animethemes'
 export const NET_LABEL_ANIMETHEMES = 'AnimeThemes'
 
-/** Пауза ограничителю после 429. Джиттер разводит одновременные карточки. */
 const RATE_PAUSE_MS = 1500
 const REQUEST_TIMEOUT_MS = 10000
 
-/**
- * Номер вида записи в кэше: кэш тем вечный, старое содержимое само не выветрится.
- * Поднимать при смене строения записи или при правке её содержимого (в кэше уже лежат списки с повторами).
- */
+/** Номер вида записи в кэше: кэш тем вечный, старое содержимое само не выветрится. Поднимать при смене строения записи. */
 const SHAPE = 4
 
 const pendingThemes = new Map<number, Promise<MalThemes | null>>()
 
-/** Ссылка на песню во внешней музыкальной службе. */
 export interface ThemeLink {
-  /** Ключ службы для разметки: spotify, apple, youtube, amazon. */
   site: string
-  /** Подпись службы для подсказки. */
   label: string
   url: string
 }
@@ -85,13 +64,11 @@ export interface MalThemes {
 }
 
 /**
- * Службы, ссылки на которые имеют смысл в карточке. Слева — имя перечисления
- * из ответа, справа — ключ и подпись для разметки. Среди ресурсов песни
- * приезжают и каталоги вроде ANIDB: слушать по ним нечего, и в строку они не идут.
+ * Службы, ссылки на которые имеют смысл в карточке. Среди ресурсов песни приезжают
+ * и каталоги вроде ANIDB: слушать по ним нечего, и в строку они не идут.
  *
  * Порядок значим: YouTube Music и YouTube дают один ключ разметки, и первая
- * найденная площадка занимает его. Музыкальная служба стоит выше обычной —
- * она и полезнее, а прежний разбор подстрокой приходил к тому же.
+ * найденная площадка занимает его.
  */
 const MUSIC_SITES: ReadonlyArray<{ key: string; site: string; label: string }> = [
   { key: 'SPOTIFY', site: 'spotify', label: 'Spotify' },
@@ -145,11 +122,7 @@ interface AnimeThemesResponse {
   errors?: Array<{ message?: string }>
 }
 
-/**
- * Звук темы: первая найденная аудиодорожка. Записей у темы бывает несколько
- * (телевизионная версия, без титров, другая серия), но песня в них одна и та же:
- * выбор между ними карточке ничего не даёт.
- */
+/** Звук темы: первая найденная аудиодорожка. Записей у темы бывает несколько, но песня в них одна. */
 function pickAudio(entries: readonly AnimeThemesThemeEntry[]): string | null {
   for (const entry of entries) {
     for (const video of entry.videos?.nodes ?? []) {
@@ -160,11 +133,7 @@ function pickAudio(entries: readonly AnimeThemesThemeEntry[]): string | null {
   return null
 }
 
-/**
- * Исполнители песни строкой. Свёртываем по имени: на группу с участниками
- * сервис присылает по строке на каждого участника, и без свёртывания имя
- * группы повторилось бы столько раз, сколько в ней человек.
- */
+/** Исполнители строкой, свёрнутые по имени: на группу сервис присылает строку на каждого участника. */
 function pickArtists(song: AnimeThemesSong): string {
   const names: string[] = []
   const seen = new Set<string>()
@@ -201,24 +170,15 @@ function pickLinks(resources: readonly AnimeThemesResource[]): ThemeLink[] {
 }
 
 /**
- * Номер темы из слага: первая группа цифр.
- *
- * Склеивать все цифры подряд нельзя. У версий заставки слаг с суффиксом,
- * и OP1-EN4Kids давал бы 14 — тема вставала бы на место настоящей
- * четырнадцатой заставки, а своей терялась. Суффикс после номера — признак
- * версии, к номеру он не относится.
- *
- * Цифр в слагe может не быть вовсе (у Hibike! Euphonium опенинг имеет слаг
- * просто OP): тогда это первая заставка.
+ * Номер темы из слага: первая группа цифр. Склеивать все цифры подряд нельзя —
+ * OP1-EN4Kids дал бы 14 и встал бы на место настоящей четырнадцатой заставки.
+ * Цифр в слаге может не быть вовсе: тогда это первая заставка.
  */
 function seqOf(slug: string): string {
   return slug.match(/\d+/)?.[0] ?? '1'
 }
 
-/**
- * Убирает песни, пришедшие дважды: у заставки с версией (OP1 и OP1-EN) номер из слага и название совпадают.
- * Сверяем по названию, а не по номеру: у слага без цифр номер совпадает с первой заставкой, а песня другая.
- */
+/** Убирает песни, пришедшие дважды: у версии (OP1 и OP1-EN) номер и название совпадают. Сверяем по названию, а не по номеру. */
 function dropTwins(items: readonly ThemeItem[]): ThemeItem[] {
   const seen = new Set<string>()
   const out: ThemeItem[] = []
@@ -234,7 +194,6 @@ function dropTwins(items: readonly ThemeItem[]): ThemeItem[] {
   return out
 }
 
-/** Разбирает ответ API в списки опенингов и эндингов. */
 function formatThemes(themes: AnimeThemesEntry[]): MalThemes {
   const formattedData: MalThemes = { openings: [], endings: [] }
 
@@ -256,8 +215,7 @@ function formatThemes(themes: AnimeThemesEntry[]): MalThemes {
   })
 
   // По номеру: API отдаёт темы в своём порядке, а в строке ждут OP1, OP2, OP3.
-  // Повторы отсеиваются после сортировки: из двух записей одной песни первой
-  // должна остаться та, что стоит раньше в списке, а порядок он и задаёт.
+  // Повторы отсеиваются после сортировки: первой должна остаться та, что стоит раньше в списке.
   const byNumber = (a: ThemeItem, b: ThemeItem): number => Number(a.seq) - Number(b.seq)
   formattedData.openings.sort(byNumber)
   formattedData.endings.sort(byNumber)
@@ -269,8 +227,7 @@ function formatThemes(themes: AnimeThemesEntry[]): MalThemes {
 }
 
 /**
- * Грузит темы по MAL ID; кэш — mediaCache, ключ THEMES2_<malId>#<вид>.
- * Никогда не отклоняется: любая неудача — null, иначе сбой всплывёт в mount() виджета.
+ * Грузит темы по MAL ID; кэш — mediaCache. Никогда не отклоняется: любая неудача — null.
  * @param malId Идентификатор MyAnimeList или null, если его не удалось разрешить.
  */
 export async function fetchMalThemes(malId: number | null): Promise<MalThemes | null> {
@@ -299,7 +256,6 @@ async function fetchMalThemesAttempt(malId: number): Promise<MalThemes | null> {
   // Замер идёт вместе с ожиданием слота: важно, сколько ждал виджет, а не сервер.
   const startedAt = Date.now()
   try {
-    // Слот берём перед отправкой: для счётчика окна это такой же запрос, как все.
     await animeThemesLimiter.acquireSlot()
 
     res = await Bridge.http.request({
@@ -316,7 +272,7 @@ async function fetchMalThemesAttempt(malId: number): Promise<MalThemes | null> {
     return null
   }
 
-  // Отчёт идёт до разбора статусов ниже: net-health сам игнорирует 429 и 401.
+  // Отчёт идёт до разбора статусов: net-health сам игнорирует 429 и 401.
   reportStatus(NET_SOURCE_ANIMETHEMES, NET_LABEL_ANIMETHEMES, res.status, Date.now() - startedAt)
 
   // Код вне 2xx мост исключением не считает, поэтому статусы разбираем сами.
@@ -347,7 +303,6 @@ async function fetchMalThemesAttempt(malId: number): Promise<MalThemes | null> {
 
     const animeList = parsed.data?.findAnimeByExternalSite ?? []
 
-    // Не найдено — кэшируем пустой результат.
     if (animeList.length === 0) {
       const emptyData: MalThemes = { openings: [], endings: [] }
       void dbSet('mediaCache', { key: cacheKey, data: emptyData, ts: Date.now() })

@@ -5,9 +5,8 @@
 import type { SnapshotEntry } from './snapshot'
 
 /**
- * Закладки AniList в слова MAL. Пересмотра у MAL нет вовсе, и он идёт
- * как «Watching»: число пересмотров всё равно едет своим полем ниже,
- * так что смысл теряется не целиком.
+ * Закладки AniList в слова MAL. Пересмотра у MAL нет: он идёт как «Watching»,
+ * а число пересмотров едет своим полем ниже.
  */
 const STATUS_WORDS: Readonly<Record<string, string>> = {
   CURRENT: 'Watching',
@@ -24,7 +23,6 @@ const NO_DATE = '0000-00-00'
 /** Дата снимка всегда ГГГГ-ММ-ДД; всё остальное считается отсутствием. */
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/
 
-/** Что выгружаем и от чьего имени. */
 export interface MalXmlInput {
   entries: Iterable<SnapshotEntry>
   /** Имя в шапке выгрузки. Импортеры его не читают, но формат его ждёт. */
@@ -36,11 +34,7 @@ export interface MalXmlResult {
   xml: string
   /** Сколько записей легло в выгрузку. */
   exported: number
-  /**
-   * Названия записей без номера MAL. Их формат выразить не может:
-   * либо связи не знает сам AniList, либо запись старее того дня, когда
-   * номер MAL стал приезжать со списком — тогда поможет перенос списка.
-   */
+  /** Названия записей без номера MAL: формат их выразить не может, помогает перенос списка. */
   noMalId: string[]
   /** Записей без закладки: в списке их нет, выгружать нечего. */
   noStatus: number
@@ -64,34 +58,26 @@ export function malStatus(status: string | null): string | null {
   return STATUS_WORDS[status] ?? null
 }
 
-/** Дата в виде формата или его же пустая дата. */
 export function malDate(value: string | null): string {
   if (value === null || !DATE_SHAPE.test(value)) return NO_DATE
   return value
 }
 
-/**
- * Оценка целым баллом 0..10. У нас шкала с десятыми, у MAL целые:
- * десятые теряются, и это ограничение формата, а не небрежность.
- */
+/** Оценка целым баллом 0..10: у нас шкала с десятыми, у MAL целые — это ограничение формата. */
 export function malScore(score10: number): number {
   if (!Number.isFinite(score10) || score10 <= 0) return 0
   return Math.min(10, Math.max(0, Math.round(score10)))
 }
 
-/** Название для выгрузки. Сопоставление идёт по номеру, так что это для глаз. */
+/** Название для выгрузки: сопоставление идёт по номеру, так что это для глаз. */
 function titleOf(entry: SnapshotEntry): string {
   return entry.english ?? entry.romaji ?? `Anime #${entry.mediaId}`
 }
 
 /**
- * Собирает выгрузку. Порядок записей — по номеру MAL, а не как пришли:
- * две выгрузки одного списка должны совпадать байт в байт, иначе их нечем
- * сравнить между собой.
- *
- * Поля выбраны по тому, что правда есть в снимке. Числа серий тайтла
- * в снимке нет, и поле series_episodes не пишется вовсе: выдуманный ноль
- * читался бы как «серий ноль», а не как «не знаю».
+ * Собирает выгрузку. Порядок — по номеру MAL, а не как пришли: две выгрузки одного списка
+ * должны совпадать байт в байт. Поле series_episodes не пишется вовсе: числа серий в снимке нет,
+ * а выдуманный ноль читался бы как «серий ноль».
  */
 export function buildMalXml(input: MalXmlInput): MalXmlResult {
   const rows: SnapshotEntry[] = []
@@ -121,7 +107,7 @@ export function buildMalXml(input: MalXmlInput): MalXmlResult {
   parts.push('  <myinfo>')
   parts.push('    <user_id>0</user_id>')
   parts.push(`    <user_name>${cdata(input.userName ?? 'AniMori')}</user_name>`)
-  // Единица значит «аниме». Двойка — манга, но её мы не ведём.
+  // Единица значит «аниме»; двойка — манга, её мы не ведём.
   parts.push('    <user_export_type>1</user_export_type>')
   parts.push(`    <user_total_anime>${rows.length}</user_total_anime>`)
   parts.push('  </myinfo>')
@@ -156,10 +142,7 @@ export function buildMalXml(input: MalXmlInput): MalXmlResult {
   }
 }
 
-/**
- * Имя файла выгрузки с днём внутри: папка загрузок через полгода иначе
- * содержит пять файлов с одним именем и номерками в скобках.
- */
+/** Имя файла выгрузки с днём внутри: иначе в папке загрузок копятся одинаковые имена. */
 export function malXmlFileName(now: Date = new Date()): string {
   const pad = (value: number): string => (value < 10 ? `0${value}` : String(value))
   const day = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`

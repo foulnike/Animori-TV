@@ -15,10 +15,7 @@ export interface ProxyConfig {
    * ещё один плагин и путь отказа. Панель настроек обязана предупредить об этом.
    */
   password: string
-  /**
-   * Адреса в обход прокси. Ввод свободный: разделителем считаются запятая,
-   * точка с запятой и перевод строки — люди пишут списки по-разному.
-   */
+  /** Адреса в обход прокси. Разделитель — запятая, точка с запятой или перевод строки. */
   bypass: string
 }
 
@@ -35,7 +32,7 @@ export const PROXY_KEYS = {
 
 /**
  * Значения на случай отсутствия ключа. Порт не подстраивается под тип сознательно:
- * настройка, меняющаяся от соседней, непредсказуема. Петля в исключениях с самого начала.
+ * настройка, меняющаяся от соседней, непредсказуема.
  */
 export const DEFAULT_PROXY: ProxyConfig = {
   enabled: false,
@@ -47,10 +44,7 @@ export const DEFAULT_PROXY: ProxyConfig = {
   bypass: 'localhost, 127.0.0.1',
 }
 
-/**
- * Приводит прочитанное из хранилища к известному типу.
- * Неизвестное значение — http, а не ошибка: файл настроек правят руками и он без схемы.
- */
+/** Приводит прочитанное к известному типу: неизвестное значение — http, а не ошибка. */
 export function normalizeProxyKind(value: unknown): ProxyKind {
   return value === 'socks5' ? 'socks5' : 'http'
 }
@@ -65,14 +59,14 @@ export function normalizeProxyPort(value: unknown): number {
   return parsed
 }
 
-/** Пригодна ли настройка к применению: включена, адрес задан, порт осмыслен. */
+/** Пригодна ли настройка к применению. */
 export function isProxyUsable(config: ProxyConfig): boolean {
   return config.enabled && config.host.trim().length > 0 && normalizeProxyPort(config.port) !== 0
 }
 
 /**
- * Адрес прокси одной строкой, без учётных данных: двоеточия и собаки в пароле
- * ломают склейку user:pass@host. Логин и пароль уходят через basicAuth в TauriBridge.
+ * Адрес прокси без учётных данных: двоеточия и собаки в пароле ломают склейку user:pass@host.
+ * Логин и пароль уходят через basicAuth в TauriBridge.
  */
 export function proxyUrl(config: ProxyConfig): string | null {
   if (!isProxyUsable(config)) return null
@@ -81,7 +75,6 @@ export function proxyUrl(config: ProxyConfig): string | null {
   return `${scheme}://${config.host.trim()}:${normalizeProxyPort(config.port)}`
 }
 
-/** Список исключений в виде отдельных записей, без пустых. */
 export function proxyBypassList(config: ProxyConfig): string[] {
   return config.bypass
     .split(/[,;\n]+/)

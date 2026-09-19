@@ -1,26 +1,22 @@
-// Реализация IAniList для десктопа. Вынесена из TauriBridge.ts ради размера.
-// Инвариант 1 цел: файл внутри src/bridge, его импортирует только TauriBridge,
-// а тот отсекается псевдопутём '@bridge-impl'.
+// Реализация IAniList для десктопа. Инвариант: файл импортирует только TauriBridge,
+// который отсекается псевдопутём '@bridge-impl'.
 
 import { invoke } from '@tauri-apps/api/core'
 
 import { BridgeHttpError, type HttpResponse, type IAniList } from './IBridge'
 
-/** Адрес повторяет GRAPHQL_URL из anilist.rs: ответ его не несёт, а контракт требует. */
+/** Повторяет GRAPHQL_URL из anilist.rs: ответ адреса не несёт, а контракт требует. */
 const GRAPHQL_URL = 'https://graphql.anilist.co'
 
-/** Что отдаёт Rust. Ни statusText, ни адреса там нет: второе постоянно, а первое
- * в HTTP/2 не передаётся вовсе. */
+/** Ответ Rust: ни statusText, ни адреса — второе постоянно, первое в HTTP/2 не передаётся. */
 type RawReply = {
   status: number
   headers: Record<string, string>
   text: string
 }
 
-/**
- * Вид сбоя из текста отказа: через invoke приходит только строка, и префиксы
- * её — единственный способ различить таймаут и сеть. Парное место — classify() в anilist.rs.
- */
+// Вид сбоя по префиксу текста: через invoke приходит только строка, префиксы —
+// единственный способ различить таймаут и сеть. Парное место — classify() в anilist.rs.
 function toBridgeError(error: unknown): Error {
   const text = typeof error === 'string' ? error : String(error)
 
@@ -32,15 +28,13 @@ function toBridgeError(error: unknown): Error {
     return new BridgeHttpError('network', GRAPHQL_URL, text)
   }
 
-  // Остальное — не транспорт: например, вход не выполнен. Повторять такое нечего.
+  // Не транспорт (например, вход не выполнен) — повторять нечего.
   return new Error(text)
 }
 
 export const tauriAniList: IAniList = {
-  /**
-   * Запрос собирает оболочка: сюда идёт только тело и просьба подписать его.
-   * Куки окна не участвуют вовсе — запрос идёт из Rust своим клиентом.
-   */
+  // Запрос собирает оболочка: сюда идёт только тело и флаг подписи. Куки окна
+  // не участвуют — запрос идёт из Rust своим клиентом.
   async query(body: string, useAuth: boolean): Promise<HttpResponse> {
     let raw: RawReply
 

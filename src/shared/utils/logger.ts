@@ -1,6 +1,5 @@
-// Ядро журнала: запись, кольцевой буфер, перехватчики ошибок. UI не входит — связь через registerLogSink().
-// ERROR держится, пока в буфере есть что-то ещё: иначе ошибки тонут в обвале, который сам заливает журнал.
-// Настройки асинхронны, поэтому enableLogger не читается на верхнем уровне модуля.
+// Ядро журнала: запись, кольцевой буфер, перехватчики ошибок. UI — через registerLogSink().
+// ERROR вытесняется последним; настройки асинхронны, поэтому enableLogger не читается на уровне модуля.
 
 import { settings } from '@/core/settings'
 
@@ -17,13 +16,12 @@ export interface LogEntry {
   stack: string
 }
 
-/** Сколько записей всего живёт в памяти: буфер один на все виды записей. */
+/** Ёмкость буфера в памяти (один на все виды записей). */
 export const LOG_CAPACITY = 500
 
-/** Сколько последних записей переживает переход между страницами (квота sessionStorage). */
+/** Сколько записей переживает переход между страницами (квота sessionStorage). */
 const SESSION_KEEP = 200
 
-/** Пауза между записями в sessionStorage. */
 const FLUSH_DELAY_MS = 1000
 
 export let scriptLogs: LogEntry[] = []
@@ -31,15 +29,8 @@ export let scriptLogs: LogEntry[] = []
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 let flushHooksInstalled = false
 
-/**
- * Освобождает место под новую запись, если буфер полон.
- *
- * Сначала ищем самую старую запись НЕ типа ERROR — их и вытесняем. Поиск идёт только
- * в момент реального переполнения и обычно заканчивается на первом же элементе:
- * поток журнала — это API и DB, а ошибки в нём редки. Если буфер целиком состоит
- * из ошибок, вытесняется самая старая из них: расти дальше буфер не имеет права
- * ни при каких условиях.
- */
+// Освобождает место под новую запись: вытесняет самую старую запись НЕ типа ERROR,
+// а если ошибок больше нет — самую старую из них. Буфер не растёт ни при каких условиях.
 function makeRoom(): void {
   while (scriptLogs.length >= LOG_CAPACITY) {
     const victim = scriptLogs.findIndex((x) => x.type !== 'ERROR')
@@ -47,7 +38,6 @@ function makeRoom(): void {
   }
 }
 
-/** Сбрасывает хвост логов в sessionStorage прямо сейчас. */
 function flushSessionLogs(): void {
   if (flushTimer) {
     clearTimeout(flushTimer)
@@ -60,11 +50,8 @@ function flushSessionLogs(): void {
   }
 }
 
-/**
- * Планирует запись. Повторные вызовы в пределах окна ничего не стоят.
- * При уходе со страницы хвост дописывается принудительно: без этого последние
- * секунды лога — ровно те, где обычно и лежит причина сбоя — терялись бы.
- */
+// Планирует запись; повторные вызовы в пределах окна ничего не стоят. При уходе
+// со страницы хвост дописывается принудительно — иначе теряются последние секунды лога.
 function scheduleSessionFlush(): void {
   if (!flushHooksInstalled) {
     flushHooksInstalled = true
@@ -80,17 +67,8 @@ function scheduleSessionFlush(): void {
   }, FLUSH_DELAY_MS)
 }
 
-/**
- * Восстановление логов из sessionStorage.
- *
- * Вызывается только после загрузки настроек и только при включённом логгере.
- * sessionStorage через мост НЕ идёт: это память вкладки, а не настройки приложения,
- * и в WebView Tauri она работает штатно.
- *
- * Восстановленный хвост обрезается по вместимости: SESSION_KEEP меньше LOG_CAPACITY,
- * но полагаться на это соотношение нельзя — в хранилище может лежать запись,
- * сделанная прежней версией скрипта с другими лимитами.
- */
+// Вызывается после загрузки настроек и только при включённом логгере. sessionStorage
+// идёт мимо моста: это память вкладки, в WebView Tauri работает штатно. Хвост обрезается по LOG_CAPACITY.
 function restoreSessionLogs(): void {
   try {
     const savedLogs = sessionStorage.getItem('animori_logs')
@@ -104,22 +82,18 @@ function restoreSessionLogs(): void {
   }
 }
 
-/**
- * Подписчик показа: получает каждую новую запись, пока открыт.
- * Один на всех — читателей журнала больше одного не бывает.
- */
+/** Подписчик показа: получает каждую новую запись, пока открыт (один на всех). */
 let logSink: ((entry: LogEntry) => void) | null = null
 
 export function registerLogSink(sink: ((entry: LogEntry) => void) | null): void {
   logSink = sink
 }
 
-/** Что уже накопилось: читателю нужен не только поток, но и предыстория. */
+/** Накопленные записи: читателю нужна и предыстория, не только поток. */
 export function readLogs(): ReadonlyArray<LogEntry> {
   return scriptLogs
 }
 
-/** Забывает записи этого запуска вместе с их копией в памяти вкладки. */
 export function clearLogs(): void {
   scriptLogs = []
 
@@ -172,18 +146,8 @@ export function Logger(type: LogType | string, message: string, details: unknown
   else if (type === 'WARN') console.warn(`[AniMori WARN] ${message}`, details || '')
 }
 
-/**
- * Глобальные перехватчики ошибок. Ставятся из start() в app/main.ts сразу после
- * чтения настроек: импорт модуля сайд-эффектов не имеет, а до настроек
- * неизвестно, включён ли журнал вообще.
- *
- * Прежде их не звал никто, и всё, что вылетало мимо try/catch, до журнала
- * не доезжало. Отсев чужого источника снят целиком: в окне приложения
- * чужого кода нет, а путь своего бандла отсев как раз и не узнавал.
- *
- * Здесь же восстанавливаются записи прошлой сессии: оба действия зависят
- * от одного флага и оба требуют уже загруженных настроек.
- */
+// Ставятся из start() в app/main.ts сразу после чтения настроек: импорт модуля
+// сайд-эффектов не имеет, а до настроек неизвестно, включён ли журнал. Здесь же — восстановление прошлой сессии.
 export function installGlobalErrorHandlers(): void {
   if (!settings.enableLogger) return
 
@@ -207,10 +171,7 @@ export function installGlobalErrorHandlers(): void {
   })
 }
 
-/**
- * Вызывает fn (async ок), логируя ошибки в Logger('ERROR').
- * Пример: await safeCall(() => anilistQuery(query, vars, true), 'anilistQuery/Viewer')
- */
+/** Вызывает fn, логируя ошибки в Logger('ERROR'); при silent ошибка не пробрасывается. */
 export async function safeCall<T>(
   fn: () => T | Promise<T>,
   context: string,

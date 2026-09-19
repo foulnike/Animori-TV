@@ -1,6 +1,5 @@
-// Оценки Шикимори и MAL для героя карточки: память, склад, затем сеть. Зеркало studio-logos.ts.
-// Доход отдельный, а не поле русской карточки: источник названия не решает, есть ли у тайтла рейтинг.
-// Карточку берём через общего добытчика: ту же запись в тот же миг просит русское название.
+// Оценки Шикимори и MAL для героя карточки: память, склад, затем сеть (зеркало studio-logos.ts).
+// Доход отдельный, а не поле русской карточки: источник названия не решает, есть ли рейтинг.
 
 import { dbGet, dbSet } from './db'
 import { fetchShikiAnime } from '../api/shikimori-media'
@@ -23,10 +22,9 @@ const memory = new Map<number, TitleRatings | null>()
 /** Чьи ключи уже искали на складе: отсутствие там — повод спросить сеть. */
 const asked = new Set<number>()
 
-/** Незавершённые добычи по номеру тайтла. */
 const pending = new Map<number, Promise<TitleRatings | null>>()
 
-/** Средняя по распределению голосов Шикимори; мусорные ключи отбрасываются. */
+/** Средняя по распределению голосов; мусорные ключи отбрасываются. */
 function shikiAverage(stats: Array<{ name: string; value: number }>): number | null {
   let sum = 0
   let votes = 0
@@ -48,7 +46,6 @@ async function readCache(mediaId: number): Promise<TitleRatings | null> {
   return data && typeof data === 'object' ? data : null
 }
 
-/** Адрес всегда анимешный: раздела манги у нас больше нет. */
 async function load(mediaId: number, malId: number): Promise<TitleRatings | null> {
   if (!asked.has(mediaId)) {
     const cached = await readCache(mediaId)
@@ -78,10 +75,7 @@ async function load(mediaId: number, malId: number): Promise<TitleRatings | null
   return ratings
 }
 
-/**
- * Оценки площадок одного тайтла или `null`. Ошибки глушатся: отсутствие
- * рейтинга — не поломка карточки.
- */
+/** Оценки площадок одного тайтла или null; ошибки глушатся — отсутствие рейтинга не поломка. */
 export async function getTitleRatings(
   mediaId: number,
   malId: number | null,

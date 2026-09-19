@@ -13,10 +13,8 @@ import { Logger } from '@/utils/logger'
 
 import { linkStubWord } from './labels'
 
-/**
- * Готовые подписи этого запуска: ключ цели -> имя. Слежение нарочно:
- * абзац уже нарисован, когда имя приезжает, и ему надо перерисоваться самому.
- */
+/** Готовые подписи этого запуска: ключ цели -> имя. Слежение нарочно: абзац уже нарисован,
+ *  когда имя приезжает, и ему надо перерисоваться самому. */
 const names = shallowReactive(new Map<string, string>())
 
 /** Кого уже спрашивали: пять ссылок на одного стоят одного запроса. */
@@ -29,10 +27,7 @@ function keyOf(aim: RichAim): string {
   return `web:${aim.url}`
 }
 
-/**
- * Слово на время ожидания. Адрес наружу сам себе подпись: чужой домен
- * говорит больше, чем слово «ссылка».
- */
+/** Слово на время ожидания. Адрес наружу сам себе подпись: чужой домен говорит больше, чем «ссылка». */
 function stubOf(aim: RichAim): string {
   if (aim.kind === 'person') return linkStubWord(aim.who)
   if (aim.kind === 'media') return linkStubWord('media')
@@ -44,17 +39,14 @@ function personName(who: PersonKind, personId: number, latin: string): string {
   return peekRussianPerson(who, personId)?.russian ?? latin
 }
 
-/**
- * Подпись, известная прямо сейчас, без ожидания. Ничего не заказывает:
- * вызов из разметки должен быть чистым — за добором следит warmRichLink.
- */
+/** Подпись, известная прямо сейчас, без ожидания. Ничего не заказывает: вызов из разметки должен быть
+ *  чистым, за добором следит `warmRichLink`. */
 export function richLinkLabel(aim: RichAim): string {
   const ready = names.get(keyOf(aim))
   if (ready !== undefined) return ready
 
   if (aim.kind === 'person') {
-    // Люди открытого тайтла уже сопоставлены складом карточек: имя
-    // есть сразу, и слово-заглушка даже на миг не мелькнет.
+    // Люди открытого тайтла уже сопоставлены складом карточек: имя есть сразу, заглушка не мелькнет.
     const known = peekPersonByShiki(aim.shikiId)
     if (known !== null && known.kind === aim.who) {
       return personName(known.kind, known.person.personId, known.person.name)
@@ -72,11 +64,8 @@ async function warmPerson(who: PersonKind, shikiId: number, key: string): Promis
   names.set(key, personName(who, target.personId, target.name))
 }
 
-/**
- * Название тайтла по номеру MAL: выписка, затем русское имя.
- * Латиница ставится сразу и потом заменяется: читаемое название лучше
- * слова «тайтл», даже пока идёт перевод.
- */
+/** Название тайтла по номеру MAL: выписка, затем русское имя. Латиница ставится сразу и потом
+ *  заменяется — читаемое название лучше слова «тайтл», даже пока идёт перевод. */
 async function warmMedia(malId: number, key: string): Promise<void> {
   const brief = (await fetchBriefsByMal([malId]))[0]
   if (brief === undefined) return
@@ -96,13 +85,8 @@ async function warmMedia(malId: number, key: string): Promise<void> {
   if (russian !== null) names.set(key, russian)
 }
 
-/**
- * Заказывает подпись ссылке, у которой её нет. Зовётся из показа на каждый
- * такой кусок; повторы отсекает набор спрошенных.
- *
- * Промах стирается из спрошенных: отказ бывает от лежащего зеркала,
- * а не от отсутствия имени, и второе открытие описания вправе попробовать снова.
- */
+/** Заказывает подпись ссылке, у которой её нет; повторы отсекает набор спрошенных. Промах стирается
+ *  из спрошенных: отказ бывает от лежащего зеркала, и второе открытие описания вправе попробовать снова. */
 export function warmRichLink(aim: RichAim): void {
   if (aim.kind === 'web') return
 

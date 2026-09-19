@@ -25,7 +25,6 @@ const TOKEN = '16f20d024a6fa20700b389c44d9ab159'
 const SEARCH_BASE = 'https://kodik-api.com'
 const PLAYER_BASE = 'https://kodikplayer.com'
 
-/** Имя источника для учёта доступности: net-health про адреса не знает. */
 export const NET_SOURCE_KODIK = 'kodik'
 export const NET_LABEL_KODIK = 'Kodik'
 
@@ -37,7 +36,6 @@ const REFERER = PLAYER_BASE + '/'
 
 const REQUEST_TIMEOUT_MS = 12000
 
-/** Пауза ограничителю после 429. Джиттер разводит одновременные попытки. */
 const RATE_PAUSE_MS = 1500
 
 /** Сколько выборка озвучек живёт в памяти: за одно открытие её спросят трижды. */
@@ -46,17 +44,10 @@ const VOICES_MEMORY_MS = 600000
 /** Ключ склада озвучек. Версия в имени: смена формы записи делает прежние негодными. */
 const CACHE_PREFIX = 'KODIK1_'
 
-/**
- * Потолок записи склада в строках серий. У долгоиграющих тайтлов бывает тысяча
- * серий в пяти озвучках, и такая запись весит больше, чем экономит: пусть
- * лучше поиск повторится, чем склад распухнет на один тайтл.
- */
+/** Потолок записи склада в строках серий: у долгоиграющих тайтлов бывает тысяча серий в пяти озвучках. */
 const CACHE_ROWS_MAX = 2000
 
-/**
- * Сколько записей просим в ответе о наличии. Потолок службы — сотня; берём
- * его целиком, потому что ответ читается до конца и лишняя страница не нужна.
- */
+/** Сколько записей просим в ответе о наличии: потолок службы — сотня, берём его целиком. */
 const PRESENCE_LIMIT = 100
 
 /** Дальше этой страницы ответ не дочитываем: тогда «нет» просто не ставится. */
@@ -65,11 +56,7 @@ const PRESENCE_PAGES = 3
 /** Перебор сдвига шифра: все варианты, кроме тождественного. */
 const SHIFTS: number[] = Array.from({ length: 25 }, (_, i) => i + 1)
 
-/**
- * Русским именем считается только кириллическое. У службы в title нередко
- * лежит латиница — её экран покажет и без нашей помощи, а вот подменять
- * ею русское имя из датасета нельзя.
- */
+/** Русским именем считается только кириллическое: в title у службы нередко латиница. */
 const CYRILLIC = /[А-Яа-яЁё]/
 
 /** Запись серии в ответе поиска: с with_episodes_data это объект, без него — строка. */
@@ -90,11 +77,6 @@ interface KodikTranslation {
   title?: string | null
 }
 
-/**
- * Сводка по тайтлу с with_material_data. Полей у службы куда больше, здесь
- * объявлены только те, что действительно читаются: остальные пришлось бы
- * поддерживать без нужды.
- */
 interface KodikMaterialData {
   anime_title?: string | null
   title?: string | null
@@ -131,24 +113,19 @@ interface FtorResponse {
   links?: Record<string, FtorLink[] | null> | null
 }
 
-/** Серия после разбора поиска: номер и адрес её страницы. */
 interface KodikEpisodeRow {
   number: number
   link: string
   title?: string
 }
 
-/** Озвучка после разбора: у службы она и есть отдельная запись поиска. */
 interface KodikVoiceRow {
   id: string
   label: string
   episodes: KodikEpisodeRow[]
 }
 
-/**
- * Сводка по тайтлу наружу. Любое поле вправе быть null: служба заполняет
- * material_data как придётся, и отсутствие имени — обычное дело, а не сбой.
- */
+/** Сводка по тайтлу наружу. Любое поле вправе быть null: служба заполняет material_data как придётся. */
 export interface KodikMaterial {
   russianTitle: string | null
   description: string | null
@@ -156,14 +133,12 @@ export interface KodikMaterial {
   episodesTotal: number | null
 }
 
-/** Что даёт один ответ поиска: озвучки и сводка приезжают вместе. */
 interface KodikFound {
   voices: KodikVoiceRow[]
   material: KodikMaterial | null
   /**
    * Служба ответила разборчиво. Ложь означает молчание сети или мусор в теле:
-   * пустой список озвучек в таком ответе не значит «озвучек нет» и на склад
-   * не ложится.
+   * пустой список озвучек тогда не значит «озвучек нет».
    */
   ok: boolean
 }
@@ -175,14 +150,10 @@ interface KodikVoicesRecord {
   airing: boolean
 }
 
-/** Ответ поиска в памяти запуска. */
 interface FoundHeld {
   at: number
   found: KodikFound
-  /**
-   * Запись пришла живым поиском, а не со склада. Только у такой сводка
-   * означает ответ службы: складская её не хранит вовсе.
-   */
+  /** Запись пришла живым поиском, а не со склада: только у такой сводка означает ответ службы. */
   full: boolean
 }
 
@@ -196,10 +167,7 @@ function describe(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-/**
- * Общая отправка. Никогда не отклоняется: любая неудача — null и запись
- * в журнал. Коды вне 2xx мост исключением не считает, разбираем сами.
- */
+/** Общая отправка. Никогда не отклоняется: любая неудача — null и запись в журнал. */
 async function send(
   options: { method: 'GET' | 'POST'; url: string; headers?: Record<string, string>; body?: string },
   note: string,
@@ -228,9 +196,8 @@ async function send(
   reportStatus(NET_SOURCE_KODIK, NET_LABEL_KODIK, res.status, Date.now() - startedAt)
 
   if (res.status === 429) {
-    // Пауза ставится ограничителю, а не нам: она притормозит и соседние запросы
-    // в очереди. Своего повтора здесь нет намеренно — повторами распоряжается
-    // ограничитель темпа, и цепочка серии всё равно начинается заново.
+    // Пауза ставится ограничителю, а не нам: она притормозит и соседние запросы в очереди.
+    // Своего повтора здесь нет намеренно — им распоряжается ограничитель темпа.
     const waitMs = RATE_PAUSE_MS + Math.floor(Math.random() * 500)
     kodikLimiter.pause(waitMs)
 
@@ -255,7 +222,7 @@ function parseJson<T>(text: string, note: string): T | null {
   }
 }
 
-/** Адреса у службы приходят без схемы: //kodikplayer.com/seria/... */
+/** Адреса у службы приходят без схемы: в начале стоит двойная косая черта. */
 function absolute(link: string): string {
   if (link.startsWith('//')) return 'https:' + link
   if (link.startsWith('/')) return PLAYER_BASE + link
@@ -283,9 +250,7 @@ function countOrNull(value: unknown): number | null {
 
 /**
  * Сводка из material_data. Собирается по всем записям поиска, а не по первой:
- * тайтл у них один, а поле у одной озвучки бывает пустым, у соседней — полным.
- * Каждое поле берётся у первой записи, где оно есть; имя, кроме того, обязано
- * быть кириллическим.
+ * поле у одной озвучки бывает пустым, у соседней — полным. Имя обязано быть кириллическим.
  */
 function toMaterial(results: KodikResult[]): KodikMaterial | null {
   const found: KodikMaterial = {
@@ -319,11 +284,7 @@ function toMaterial(results: KodikResult[]): KodikMaterial | null {
   return empty ? null : found
 }
 
-/**
- * Идёт ли тайтл ещё. Вышло меньше заявленного — идёт; сошлось или служба
- * промолчала — считаем идущим только в первом случае неизвестности: короткий
- * срок склада ошибается лишним запросом, длинный — забытыми сериями.
- */
+/** Идёт ли тайтл ещё: вышло меньше заявленного — идёт. Короткий срок склада ошибается лишним запросом, длинный — забытыми сериями. */
 function looksAiring(material: KodikMaterial | null): boolean {
   const aired = material?.episodesAired ?? null
   const total = material?.episodesTotal ?? null
@@ -332,15 +293,11 @@ function looksAiring(material: KodikMaterial | null): boolean {
   return aired < total
 }
 
-/** Ключ склада озвучек по номеру Шикимори. */
 function voicesKey(shikimoriId: number): string {
   return CACHE_PREFIX + String(shikimoriId)
 }
 
-/**
- * Озвучки со склада. Пустая запись считается отсутствием: пустоту мы туда не
- * пишем, а значит она пришла из чужой версии формата.
- */
+/** Озвучки со склада. Пустая запись считается отсутствием: пустоту мы туда не пишем. */
 async function readVoices(shikimoriId: number): Promise<KodikVoiceRow[] | null> {
   const key = voicesKey(shikimoriId)
 
@@ -362,10 +319,7 @@ async function readVoices(shikimoriId: number): Promise<KodikVoiceRow[] | null> 
   }
 }
 
-/**
- * Кладёт озвучки на склад. Ни описание, ни сводка туда не идут: они верны
- * на один запуск, а склад живёт неделями.
- */
+/** Кладёт озвучки на склад. Ни описание, ни сводка туда не идут: они верны на один запуск, а склад живёт неделями. */
 function writeVoices(shikimoriId: number, found: KodikFound): void {
   if (!found.ok || found.voices.length === 0) return
 
@@ -386,9 +340,7 @@ function writeVoices(shikimoriId: number, found: KodikFound): void {
 
 /**
  * Значение var со страницы. Пустая строка — законное значение, а не отсутствие:
- * страница, открытая без ссылающейся стороны, кладёт var ref = "" и подпись
- * ставит ровно на пустой строке. Поэтому [^"']* : с плюсом «пусто» неотличимо
- * от «переменной нет вовсе», и цепочка обрывалась на ровном месте.
+ * страница без ссылающейся стороны кладёт var ref = "" и подписывает её.
  */
 function pickVar(html: string, name: string): string | null {
   const found = new RegExp(`var\\s+${name}\\s*=\\s*["']([^"']*)["']`).exec(html)
@@ -401,12 +353,9 @@ function pickInfo(html: string, name: string): string | null {
 }
 
 /**
- * Собирает подписи со страницы. Признаки видео берутся из vInfo, а если его
- * переименуют — из самого адреса страницы: он те же три значения и несёт.
- *
- * Обязательны только подписи и признаки. Сами domain, pd и ref вправе быть
- * пустыми: страница подписывает то, что в себя положила, пустую строку в том
- * числе, и /ftor такую пару принимает.
+ * Собирает подписи со страницы. Признаки видео берутся из vInfo, а если его переименуют —
+ * из самого адреса страницы. Обязательны только подписи и признаки: domain, pd и ref
+ * вправе быть пустыми.
  */
 function readPage(html: string, pageUrl: string): PageFields | null {
   const path = /\/(video|seria|serial)\/(\d+)\/([0-9a-z]+)/i.exec(pageUrl)
@@ -436,7 +385,6 @@ function readPage(html: string, pageUrl: string): PageFields | null {
   return fields
 }
 
-/** Подписи и признаки со страницы серии — всё, что нужно для /ftor. */
 interface PageFields {
   d: string
   dSign: string
@@ -449,19 +397,13 @@ interface PageFields {
   id: string
 }
 
-/**
- * Что дал вопрос об одном номере: нашёлся ли он и дочитан ли ответ.
- *
- * `found` — не множество, а признак: спрашиваем всегда про один номер, и
- * множество из одного элемента только прятало бы это от читателя.
- */
+/** Что дал вопрос об одном номере. `found` — признак, а не множество: спрашиваем всегда про один номер. */
 interface KodikSeen {
   found: boolean
   /** Ответ дочитан до последней страницы. Нет — «нет» из него не следует. */
   complete: boolean
 }
 
-/** Сдвиг латинских букв по кругу внутри своего регистра. */
 function shiftLetters(text: string, by: number): string {
   return text.replace(/[a-zA-Z]/g, (letter) => {
     const limit = letter <= 'Z' ? 90 : 122
@@ -495,10 +437,7 @@ function fromBase64(text: string): string | null {
   return out
 }
 
-/**
- * Расшифровывает адрес из /ftor. Изредка служба отдаёт его открытым — так же
- * решает и чужой плеер: если в строке есть //, она уже адрес.
- */
+/** Расшифровывает адрес из /ftor. Изредка служба отдаёт его открытым: двойная косая черта в начале — уже адрес. */
 function decodeLink(src: string): string | null {
   if (src.includes('//')) return src
 
@@ -520,14 +459,10 @@ function decodeLink(src: string): string | null {
 }
 
 /**
- * Срок годности из самого адреса: подпись вида :2026090118/ — час смерти
- * по Гринвичу. Замерено до конца: ссылка с меткой 18 отдавала поток
- * в 20:59:43 МСК и ответила 403 в 21:00:13, то есть ровно в 18:00 UTC.
- * Жила она около четырёх часов, но верить надо метке, а не длительности:
- * час выдачи в неё округляется вверх, и запас у разных ссылок разный.
+ * Срок годности из самого адреса: подпись вида :2026090118/ — час смерти по Гринвичу.
+ * Верить надо метке, а не длительности: час выдачи в неё округляется вверх.
  *
- * Нет подписи — null: пусть лучше плеер споткнётся об отказ CDN, чем мы
- * придумаем срок.
+ * Нет подписи — null: пусть плеер споткнётся об отказ CDN, чем мы придумаем срок.
  */
 function expiryOf(url: string): number | null {
   const found = /:(\d{10})\//.exec(url)
@@ -543,11 +478,7 @@ function expiryOf(url: string): number | null {
   return Date.UTC(year, month - 1, day, hour)
 }
 
-/**
- * Дорожки из ответа /ftor. Один и тот же адрес часто лежит под двумя высотами
- * сразу: на замере 480 и 720 вели на один файл 480.mp4. Две кнопки на один фаил —
- * обман, поэтому адреса сворачиваются, а высотой берётся меньшая из заявленных.
- */
+/** Дорожки из ответа /ftor. Один адрес часто лежит под двумя высотами: адреса сворачиваются, высотой берётся меньшая. */
 function toTracks(links: Record<string, FtorLink[] | null> | null | undefined): VideoTrack[] {
   const byUrl = new Map<string, number>()
 
@@ -572,7 +503,6 @@ function toTracks(links: Record<string, FtorLink[] | null> | null | undefined): 
     .sort((a, b) => b.height - a.height)
 }
 
-/** Серии одной записи поиска: сезоны по порядку, фильм — одной серией. */
 function episodesOf(item: KodikResult): KodikEpisodeRow[] {
   const rows: KodikEpisodeRow[] = []
   const seasons = Object.entries(item.seasons ?? {}).sort(
@@ -599,7 +529,6 @@ function episodesOf(item: KodikResult): KodikEpisodeRow[] {
   return rows.sort((a, b) => a.number - b.number)
 }
 
-/** Собирает озвучки из ответа поиска: запись на каждую озвучку своя. */
 function toVoices(results: KodikResult[]): KodikVoiceRow[] {
   const rows = new Map<string, KodikVoiceRow>()
 
@@ -634,13 +563,9 @@ function toVoices(results: KodikResult[]): KodikVoiceRow[] {
 }
 
 /**
- * Ответ поиска по номеру Шикимори. Десять минут живёт в памяти целиком:
- * озвучки и сводка приезжают одним ответом, и разделять их значило бы
- * спрашивать службу дважды об одном.
- *
- * Складская запись здесь не читается намеренно: сводки в ней нет, а этот путь
- * нужен ровно тем, кому сводка и нужна. Озвучки берёт loadVoices — он
- * заглядывает на склад первым.
+ * Ответ поиска по номеру Шикимори: десять минут живёт в памяти целиком. Складская
+ * запись здесь не читается намеренно — сводки в ней нет, а этот путь нужен ровно тем,
+ * кому сводка и нужна. Озвучки берёт loadVoices.
  */
 async function loadFound(shikimoriId: number): Promise<KodikFound> {
   const known = foundMemory.get(shikimoriId)
@@ -685,19 +610,14 @@ async function loadFoundUncached(shikimoriId: number): Promise<KodikFound> {
   return { voices: toVoices(results), material: toMaterial(results), ok: true }
 }
 
-/**
- * Озвучки по номеру Шикимори: память запуска, затем склад, затем служба.
- * Складская запись и есть та самая экономия: адреса страниц серий постоянны,
- * и повторное открытие тайтла обходится без поиска.
- */
+/** Озвучки по номеру Шикимори: память запуска, затем склад, затем служба. Адреса страниц серий постоянны. */
 async function loadVoices(shikimoriId: number): Promise<KodikVoiceRow[]> {
   const known = foundMemory.get(shikimoriId)
   if (known && Date.now() - known.at < VOICES_MEMORY_MS) return known.found.voices
 
   const stored = await readVoices(shikimoriId)
   if (stored !== null) {
-    // В память складская запись ложится с пометкой «сводки нет»: иначе
-    // kodikMaterial счёл бы её ответом службы и вернул бы пустое имя.
+    // В память складская запись ложится с пометкой «сводки нет»: иначе kodikMaterial вернул бы пустое имя.
     foundMemory.set(shikimoriId, {
       at: Date.now(),
       found: { voices: stored, material: null, ok: true },
@@ -711,11 +631,8 @@ async function loadVoices(shikimoriId: number): Promise<KodikVoiceRow[]> {
 }
 
 /**
- * Один вопрос об одном номере: знает ли служба такой тайтл. Ни сезонов,
- * ни серий, ни сводки — ответ короткий, и сотни записей на страницу хватает.
- *
- * Номер уходит по одному нарочно: перечень служба не принимает ни в одной
- * форме (разбор — в шапке файла). Спрашивать пачкой нельзя, а не «пока нельзя».
+ * Один вопрос об одном номере: знает ли служба такой тайтл. Номер уходит по одному
+ * нарочно: перечень служба не принимает ни в одной форме.
  *
  * null — служба не ответила вовсе: это молчание, а не «нет».
  */
@@ -751,17 +668,12 @@ async function askOne(id: number): Promise<KodikSeen | null> {
 }
 
 /**
- * Наличие входа про нескольких. Ключ ответа — номер Шикимори; номера, про
- * который служба не высказалась, в ответе просто нет.
+ * Наличие входа про нескольких. Ключ ответа — номер Шикимори; номера, про который
+ * служба не высказалась, в ответе просто нет. Вопрос задаётся по одному номеру, а не
+ * пачкой: перечень служба не понимает ни в одной форме.
  *
- * Вопрос задаётся по одному номеру, а не пачкой: перечень служба не понимает
- * ни в одной форме, и «одним вопросом на два десятка тайтлов» здесь взять
- * нечего. Отсюда и вид ответа: «нет» ставится только тогда, когда служба
- * ответила про этот номер явно и ответ дочитан до конца. Молчание остаётся
- * молчанием — на нём метка «нет видео» была бы прямой ложью.
- *
- * Цена честная и известная: запрос на тайтл. Ограничитель темпа растягивает
- * полсотни плиток примерно на минуту, и это потолок службы, а не наш недочёт.
+ * «Нет» ставится только тогда, когда служба ответила про этот номер явно и ответ
+ * дочитан до конца. Цена — запрос на тайтл: это потолок службы, а не наш недочёт.
  */
 export async function kodikPresence(ids: readonly number[]): Promise<Map<number, boolean>> {
   const out = new Map<number, boolean>()
@@ -779,11 +691,9 @@ export async function kodikPresence(ids: readonly number[]): Promise<Map<number,
 }
 
 /**
- * Сводка по тайтлу. Своих запросов не делает: либо отдаёт уже полученное,
- * либо тянет тот же поиск, что нужен для озвучек. Null — служба тайтл
- * не знает или material_data не заполнила; это не сбой.
- *
- * Складская запись сводки не хранит: там ей не место, а протухшее описание
+ * Сводка по тайтлу. Своих запросов не делает: либо отдаёт уже полученное, либо тянет
+ * тот же поиск, что нужен для озвучек. Null — служба тайтл не знает или material_data
+ * не заполнила; это не сбой. Складская запись сводки не хранит: протухшее описание
  * хуже отсутствующего.
  */
 export async function kodikMaterial(shikimoriId: number): Promise<KodikMaterial | null> {
@@ -868,16 +778,13 @@ export const kodikSource: VideoSource = {
   },
 
   /**
-   * Вопрос о наличии стоит запроса на тайтл, и объявлено это честно: оптовой
-   * формы у службы нет, а обещать 'batch' значило бы врать слою показа. Он по
-   * этой метке решает, спрашивать ли сразу полку или по тайтлу за раз, — и на
-   * 'batch' отправил бы пачку, которую служба встретит отказом.
+   * Вопрос о наличии стоит запроса на тайтл: оптовой формы у службы нет, и на 'batch'
+   * слой показа отправил бы пачку, которую служба встретит отказом.
    */
   presenceCost: 'each',
 
   async askPresence(reqs: readonly VideoRequest[]): Promise<PresenceMap> {
-    // Номер Шикимори — единственный вход. Тайтл без него службе не адресуем:
-    // его отсутствие в ответе означало бы лишь то, что мы не смогли спросить.
+    // Номер Шикимори — единственный вход: без него отсутствие в ответе означало бы лишь, что мы не смогли спросить.
     const byShiki = new Map<number, number[]>()
 
     for (const req of reqs) {
@@ -908,8 +815,7 @@ export const kodikSource: VideoSource = {
     const rows = await loadVoices(id)
     const row = rows.find((r) => r.id === voiceId)
 
-    // Отрезки заставки и титров служба держит на странице серии, а не в поиске:
-    // читать их сейчас значило бы скачать страницу каждой серии заранее.
+    // Отрезки заставки и титров служба держит на странице серии, а не в поиске: читать их сейчас — значит скачать каждую страницу заранее.
     return (row?.episodes ?? []).map((episode) => ({
       number: episode.number,
       ...(episode.title ? { title: episode.title } : {}),

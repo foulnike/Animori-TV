@@ -1,12 +1,11 @@
 // Отборы и сортировки по коллекции: только чтение памяти, без копий записей.
-// Ни сети, ни хранилища здесь нет: перебирается то, что уже в памяти.
-// Менять записи через этот файл нельзя, для того есть хозяин в collection.ts.
+// Ни сети, ни хранилища; менять записи нельзя — для того есть хозяин в collection.ts.
 
 import { adultAllowed } from './adult'
 import { eachEntry, entryCount } from './collection'
 import type { SnapshotEntry } from './snapshot'
 
-/** Условия отбора. Пустой набор пропускает все записи. */
+/** Условия отбора; пустой набор пропускает все записи. */
 export interface EntryFilter {
   status?: string[]
   minScore?: number
@@ -14,41 +13,28 @@ export interface EntryFilter {
   onlyRated?: boolean
   onlyStarted?: boolean
   updatedAfter?: number
-  /**
-   * Слово для поиска по названиям из снимка: ромадзи и английское.
-   * Регистр не важен. Русских названий в памяти списка нет.
-   */
+  /** Слово для поиска по ромадзи и английскому названию из снимка; регистр не важен.
+   * Русских названий в памяти списка нет. */
   word?: string
-  /** Только взрослое или только остальное. Без условия — всё подряд. */
+  /** Только взрослое или только остальное; без условия — всё подряд. */
   isAdult?: boolean
-  /**
-   * Прятать взрослое, пока тумблер показа выключен.
-   *
-   * Отдельное условие, а не следствие `isAdult`: то поле выбирает «только
-   * такое», а это — «никакого такого». Смешать их значило бы потерять
-   * возможность отобрать взрослое отдельно.
-   *
-   * Условие включают там, где список показывают: свои закладки и сбор номеров
-   * для календаря. По умолчанию его нет нарочно — на отборе стоят и внутренние
-   * вопросы вроде «есть ли запись у этого тайтла», где прятать значит соврать
-   * о своём же списке.
-   */
+  /** Прятать взрослое, пока тумблер показа выключен. Отдельно от `isAdult`:
+   * то выбирает «только такое», это — «никакого такого». По умолчанию условия
+   * нет нарочно: на отборе стоят и внутренние вопросы, где прятать значит соврать о своём списке. */
   hideAdult?: boolean
 }
 
-/** По какому полю сортировать. Названий в памяти нет, по ним сортирует экран. */
+/** По какому полю сортировать; названий в памяти нет — по ним сортирует экран. */
 export type SortKey = 'updated' | 'score' | 'progress' | 'mediaId'
 
-/** Направление сортировки. По умолчанию убывание: свежее и лучшее сверху. */
+/** Направление сортировки; по умолчанию убывание — свежее и лучшее сверху. */
 export type SortOrder = 'asc' | 'desc'
 
-/** Правило сортировки. */
 export interface EntrySort {
   key: SortKey
   order?: SortOrder
 }
 
-/** Страница выдачи: сколько пропустить и сколько взять. */
 export interface EntryPage {
   offset?: number
   limit?: number
@@ -57,22 +43,19 @@ export interface EntryPage {
 /** Пустой отбор одним образцом: сравнение с ним даёт быстрый путь подсчёта. */
 const EMPTY_FILTER: EntryFilter = {}
 
-/** Есть ли слово в названии. Пустое название совпадением не считается. */
+/** Есть ли слово в названии; пустое название совпадением не считается. */
 function hasWord(title: string | null | undefined, word: string): boolean {
   if (typeof title !== 'string' || title === '') return false
   return title.toLowerCase().includes(word)
 }
 
-/**
- * Проверяет одну запись. Отдельная функция: одно и то же условие
- * нужно и перебору, и подсчёту, и странице — расхождение видно как ошибка чисел.
- */
+// Одна проверка на перебор, подсчёт и страницу: расхождение видно как ошибка чисел.
 export function matchesEntry(entry: SnapshotEntry, filter: EntryFilter = EMPTY_FILTER): boolean {
   if (filter.status && filter.status.length > 0) {
     if (entry.status === null || !filter.status.includes(entry.status)) return false
   }
 
-  // Ноль оценкой не считается: так AniList отдаёт «оценки нет».
+  // Ноль — «оценки нет»: так отдаёт AniList.
   if (filter.onlyRated === true && entry.score10 <= 0) return false
   if (filter.onlyStarted === true && entry.progress <= 0) return false
 
@@ -92,17 +75,14 @@ export function matchesEntry(entry: SnapshotEntry, filter: EntryFilter = EMPTY_F
   return true
 }
 
-/**
- * Ленивый перебор подходящих записей. Массива не создаёт вовсе:
- * вызывающий вправе остановиться на любой записи.
- */
+// Ленивый перебор без промежуточного массива: вызывающий вправе остановиться на любой записи.
 export function* filterEntries(filter: EntryFilter = EMPTY_FILTER): Generator<SnapshotEntry> {
   for (const entry of eachEntry()) {
     if (matchesEntry(entry, filter)) yield entry
   }
 }
 
-/** Сколько записей проходит отбор. Считает перебором, без промежуточного массива. */
+/** Сколько записей проходит отбор; считает перебором, без промежуточного массива. */
 export function countEntries(filter: EntryFilter = EMPTY_FILTER): number {
   if (filter === EMPTY_FILTER) return entryCount()
 
@@ -113,7 +93,6 @@ export function countEntries(filter: EntryFilter = EMPTY_FILTER): number {
   return found
 }
 
-/** Сравнение двух записей по возрастанию выбранного поля. */
 function compare(a: SnapshotEntry, b: SnapshotEntry, key: SortKey): number {
   if (key === 'score') return a.score10 - b.score10
   if (key === 'progress') return a.progress - b.progress
@@ -121,10 +100,8 @@ function compare(a: SnapshotEntry, b: SnapshotEntry, key: SortKey): number {
   return a.updatedAt - b.updatedAt
 }
 
-/**
- * Отобранные записи одним массивом ссылок, при надобности отсортированные
- * и урезанные до страницы. Ссылки, а не копии: правка видна через них сразу.
- */
+/** Отобранные записи массивом ссылок, при надобности отсортированные и урезанные до страницы.
+ * Ссылки, а не копии: правка видна через них сразу. */
 export function selectEntries(
   filter: EntryFilter = EMPTY_FILTER,
   sort?: EntrySort,
@@ -147,7 +124,7 @@ export function selectEntries(
   return found.slice(offset, limit === undefined ? undefined : offset + limit)
 }
 
-/** Первая подходящая запись или undefined. Перебор останавливается на находке. */
+/** Первая подходящая запись или undefined; перебор останавливается на находке. */
 export function findEntry(filter: EntryFilter): SnapshotEntry | undefined {
   for (const entry of eachEntry()) {
     if (matchesEntry(entry, filter)) return entry
@@ -155,13 +132,8 @@ export function findEntry(filter: EntryFilter): SnapshotEntry | undefined {
   return undefined
 }
 
-/**
- * Сколько записей в каждом статусе. Экран списков рисует этим числа
- * у закладок. Запись без статуса попадает в UNKNOWN, а не теряется.
- *
- * Отбор обязательно тот же, что у строк: иначе число у закладки
- * считало бы записи, которых на этом экране не увидеть.
- */
+/** Сколько записей в каждом статусе (запись без статуса идёт в UNKNOWN, а не теряется).
+ * Отбор обязан совпадать с отбором строк: иначе число у закладки считало бы невидимые записи. */
 export function countByStatus(filter: EntryFilter = EMPTY_FILTER): Map<string, number> {
   const totals = new Map<string, number>()
   for (const entry of eachEntry()) {
@@ -172,7 +144,7 @@ export function countByStatus(filter: EntryFilter = EMPTY_FILTER): Map<string, n
   return totals
 }
 
-/** Средняя оценка по выставленным, два знака после запятой. Без оценок — ноль. */
+/** Средняя по выставленным оценкам, два знака; без оценок — ноль. */
 export function averageScore(filter: EntryFilter = EMPTY_FILTER): number {
   let sum = 0
   let rated = 0
@@ -187,7 +159,7 @@ export function averageScore(filter: EntryFilter = EMPTY_FILTER): number {
   return rated === 0 ? 0 : Math.round((sum / rated) * 100) / 100
 }
 
-/** Сумма просмотренных серий по отбору. Нужна сводке на экране настроек. */
+/** Сумма просмотренных серий по отбору; нужна сводке в настройках. */
 export function totalProgress(filter: EntryFilter = EMPTY_FILTER): number {
   let total = 0
   for (const entry of eachEntry()) {

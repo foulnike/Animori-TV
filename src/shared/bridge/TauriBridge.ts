@@ -1,6 +1,5 @@
-// IBridge для десктопной оболочки Tauri.
-// Единственная реализация: псевдопуть '@bridge-impl' из vite.config.ts ведёт сюда.
-// Ветвлением его не заменить — new LazyStore ниже даёт побочный эффект при импорте.
+// IBridge для десктопной оболочки Tauri. Псевдопуть '@bridge-impl' из vite.config.ts ведёт сюда;
+// ветвлением не заменить — new LazyStore ниже даёт побочный эффект при импорте.
 
 import { invoke } from '@tauri-apps/api/core'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
@@ -34,11 +33,10 @@ import { tauriProxyDiagnostics } from './TauriProxyDiagnostics'
 
 // ==== storage ====
 
-// LazyStore не требует await при создании. autoSave — только сетка безопасности:
-// он пишет файл уже после разрешения set(), это дефект 4.5.
+// LazyStore не требует await при создании. autoSave — сетка безопасности: он пишет файл уже после разрешения set().
 const store = new LazyStore('animori-settings.json', { autoSave: true })
 
-/** Снимок файла настроек в памяти: один entries() вместо трёх десятков get() на старте. */
+/** Снимок файла настроек в памяти: один entries() вместо десятков get() на старте. */
 let snapshot: Map<string, unknown> | null = null
 
 /** Незавершённая загрузка снимка: параллельные чтения не дёргают entries() повторно. */
@@ -85,9 +83,8 @@ async function storageGet<T>(key: string, defaultValue?: T): Promise<T | undefin
   return value
 }
 
-/** Запись значения и немедленная выгрузка файла на диск. */
 async function writeValue(key: string, value: unknown): Promise<void> {
-  // Снимок правится сразу: чтение сразу после set() обязано видеть новое значение.
+  // Снимок правится сразу: чтение после set() обязано видеть новое значение.
   if (snapshot) snapshot.set(key, value)
 
   await store.set(key, value)
@@ -122,13 +119,8 @@ const tauriStorage: IStorage = {
 
 // ==== files ====
 
-/**
- * Запасная копия снимка файлом в приватном каталоге (пункт 2.5.2). Каталог
- * и список имён живут в files.rs: сюда пути не попадают вовсе.
- *
- * Ни чтение, ни запись не отклоняются: дубль — страховка, и его отказ не должен
- * портить сохранение снимка в основное хранилище.
- */
+// Запасная копия снимка файлом в приватном каталоге; пути и имена живут в files.rs.
+// Ни чтение, ни запись не отклоняются: дубль — страховка, его отказ не должен портить основное сохранение.
 const tauriFiles: IFiles = {
   available: true,
 
@@ -155,62 +147,44 @@ const tauriFiles: IFiles = {
 
 // ==== выгрузка ====
 
-/**
- * Выгрузка списка в папку, выбранную человеком (пункт 3.3), и сохранение
- * трека темы из плитки карточки. Окно выбора открывает сам Rust: разрешений
- * на диалог разметке не выдано, и проверка имени с папкой живёт там же,
- * в export.rs.
- *
- * Отказы НЕ глотаются, в отличие от tauriFiles выше: там дубль снимка,
- * который вправе не получиться молча, а выгрузку человек затеял руками
- * и ждёт ответа. Текст ошибки приходит из Rust уже читаемым.
- */
+// Выгрузка списка в выбранную человеком папку и сохранение трека темы. Окно выбора
+// открывает Rust (export.rs). Отказы НЕ глотаются: выгрузку человек затеял руками и ждёт ответа.
 const tauriExport: IExport = {
   available: true,
 
   async pickDir(): Promise<string | null> {
-    // null — человек закрыл окно выбора. Это не ошибка и наверх идёт как есть.
+    // null — человек закрыл окно выбора, не ошибка.
     const picked = await invoke<string | null>('animori_export_pick_dir')
     return picked ?? null
   },
 
   async write(dir: string, name: string, text: string): Promise<string> {
-    // Ответ команды — полный путь записанного файла, его и отдаём.
     return await invoke<string>('animori_export_write', { dir, name, text })
   },
 
   async pickTrackDir(): Promise<string | null> {
-    // Своя команда, а не animori_export_pick_dir: разница в заголовке окна выбора.
-    // Выбранная папка никуда не записывается: спрашиваем каждый раз.
+    // Своя команда: разница в заголовке окна выбора. Папка не запоминается — спрашиваем каждый раз.
     const picked = await invoke<string | null>('animori_track_pick_dir')
     return picked ?? null
   },
 
   async writeTrack(dir: string, name: string, bytesBase64: string): Promise<string> {
-    // Ключ именно bytes: в export.rs параметр назван одним словом, иначе
-    // пришлось бы помнить про перевод camelCase в snake_case на стороне Tauri.
+    // Ключ именно bytes: в export.rs параметр назван одним словом (иначе — перевод camelCase в snake_case).
     return await invoke<string>('animori_track_write', { dir, name, bytes: bytesBase64 })
   },
 }
 
 // ==== прокси ====
 
-/**
- * Прокси НАШЕГО канала — запросов из процесса оболочки. Страницу в WebView2
- * настраивает src-tauri/src/proxy.rs. Тип выведен из fetch: имя экспорта менялось.
- * Запросы к AniList сюда не идут: им прокси собирает anilist.rs из тех же ключей.
- */
+// Прокси НАШЕГО канала — запросов из процесса оболочки; страницу в WebView2 настраивает proxy.rs.
+// Запросы к AniList идут мимо: им прокси собирает anilist.rs из тех же ключей. Тип выведен из fetch.
 type TauriFetchOptions = NonNullable<Parameters<typeof tauriFetch>[1]>
 type TauriProxyOption = TauriFetchOptions['proxy']
 
-/** Ответ плагина: тип выведен, чтобы не гадать с именем экспорта. */
 type TauriResponse = Awaited<ReturnType<typeof tauriFetch>>
 
-/**
- * Подпись последней настройки, о негодности которой уже сказано в журнал.
- * Пароля в ней нет и быть не может: подпись живёт в памяти до конца сеанса,
- * а нужна она ровно для того, чтобы не повторять одно и то же на каждый запрос.
- */
+// Подпись настройки, о негодности которой уже сказано в журнал: чтобы не повторять на каждый запрос.
+// Пароля в ней нет и быть не может.
 let warnedBadProxy = ''
 
 /** Один раз на настройку: включённый тумблер с пустым адресом — трафик напрямую. */
@@ -222,17 +196,8 @@ function warnBadProxy(config: ProxyConfig): void {
   console.warn('[AniMori] Прокси включён, но адрес или порт заданы неверно — запросы идут напрямую')
 }
 
-/**
- * Прокси для одного запроса. Читается КАЖДЫЙ раз, а не однажды за сеанс.
- *
- * Однажды прочитанное значение держалось весь сеанс, и смена адреса в панели
- * до перезапуска не доходила. Хуже всего было выключение: снятый тумблер
- * оставлял запросы в мёртвом прокси, и это читалось как поломка программы.
- *
- * Цены у чтения нет: значения берутся из снимка файла настроек в памяти,
- * а не через IPC. Окна это не касается — ключи запуска WebView2 читаются
- * один раз, при создании окна, и там перезапуск обязателен.
- */
+// Читается на КАЖДЫЙ запрос, а не раз за сеанс: иначе смена адреса и снятый тумблер
+// не доходят до перезапуска. Окна это не касается: ключи запуска WebView2 читаются один раз, при создании.
 async function readProxyOption(): Promise<TauriProxyOption> {
   try {
     const [enabled, kind, host, port, login, password, bypass] = await Promise.all([
@@ -246,8 +211,7 @@ async function readProxyOption(): Promise<TauriProxyOption> {
     ])
 
     const config: ProxyConfig = {
-      // Строго true, как matches!(…, Bool(true)) в proxy.rs: «да» строкой
-      // движок за включение не считает, и мост обязан судить так же.
+      // Строго true, как matches!(…, Bool(true)) в proxy.rs: строку «да» движок включением не считает.
       enabled: enabled === true,
       kind: normalizeProxyKind(kind),
       host: String(host ?? ''),
@@ -260,9 +224,7 @@ async function readProxyOption(): Promise<TauriProxyOption> {
     const url = proxyUrl(config)
 
     if (!url) {
-      // Инвариант 4: иначе включённый тумблер врёт, а трафик идёт напрямую.
-      // Сказано будет один раз на настройку, а не на каждый запрос: с пустым
-      // адресом при включённом тумблере запросов много, и журнал бы утонул.
+      // Инвариант 4: иначе включённый тумблер врёт, а трафик идёт напрямую. Сказано раз на настройку, не на запрос.
       if (config.enabled) warnBadProxy(config)
       return undefined
     }
@@ -288,13 +250,11 @@ async function readProxyOption(): Promise<TauriProxyOption> {
 
 // ==== http ====
 
-/** Без своего представления reqwest подписывается собой: 403 у AnimeThemes, 5.3.5. */
+/** Без своего User-Agent reqwest подписывается собой: 403 у AnimeThemes. */
 const DEFAULT_USER_AGENT = `AniMori/${__ANIMORI_VERSION__} (+https://github.com/foulnike/AniMori-AniList-Toolkit)`
 
-/**
- * Общая часть обоих запросов: прокси, таймаут на весь запрос и разбор
- * транспортных сбоев. Коды вне 2xx не трогаем: их разбирает вызывающий.
- */
+// Общая часть обоих запросов: прокси, таймаут на весь запрос и разбор транспортных
+// сбоев. Коды вне 2xx не трогаем: их разбирает вызывающий.
 async function sendRequest(options: HttpRequestOptions): Promise<TauriResponse> {
   const { url, method = 'GET', headers, body, timeoutMs, credentials = 'include' } = options
 
@@ -331,15 +291,8 @@ async function sendRequest(options: HttpRequestOptions): Promise<TauriResponse> 
     const name = e instanceof Error ? e.name : ''
     if (name === 'AbortError') throw new BridgeHttpError('abort', url)
 
-    // ПРИЧИНА ОБЯЗАНА ПОПАСТЬ В ЖУРНАЛ
-    // BridgeHttpError несёт только вид сбоя, и вызывающий говорит человеку
-    // «проверьте сеть» одинаково в двух совсем разных случаях: сеть вправду
-    // молчит — или адрес не перечислен в src-tauri/capabilities/default.json,
-    // и тогда плагин отклоняет запрос до всякого соединения словами
-    // «url not allowed on the configured scope». Второе стоило человеку вечера
-    // с ВПН на облачной копии: в окне сетевой сбой, а в списке разрешений
-    // не хватало одного хоста загрузчика Диска. Отсюда строка с самой ошибкой:
-    // она попадает в консоль окна и сразу называет виновника.
+    // Причина обязана попасть в журнал: BridgeHttpError несёт только вид сбоя, а сеть
+    // и неперечисленный в capabilities/default.json адрес выглядят одинаково.
     console.error('[AniMori] Запрос не ушёл', url, e)
 
     throw new BridgeHttpError('network', url)
@@ -348,7 +301,7 @@ async function sendRequest(options: HttpRequestOptions): Promise<TauriResponse> 
   }
 }
 
-/** Заголовки ответа в словарь. Headers сам приводит имена к нижнему регистру. */
+/** Заголовки в словарь; Headers сам приводит имена к нижнему регистру. */
 function readHeaders(res: TauriResponse): Record<string, string> {
   const responseHeaders: Record<string, string> = {}
   res.headers.forEach((value, name) => {
@@ -408,24 +361,16 @@ const tauriClipboard: IClipboard = {
 
 // ==== shell ====
 
-/**
- * Оболочка: свои команды из lib.rs плюс история WebView. Перезагрузка, внешние
- * ссылки, полный экран и панель трансляции — только командами. Команды требуют
- * разрешений: build.rs и capabilities.
- */
+// Свои команды из lib.rs плюс история WebView. Команды требуют разрешений:
+// build.rs и capabilities.
 const tauriShell: IShell = {
   async reload(): Promise<void> {
     await invoke('animori_reload')
   },
 
   restart(): Promise<void> {
-    // Ответа не будет: команда уводит процесс целиком, и обещание invoke
-    // не разрешится никогда. Ждать его здесь значило бы повесить вызывающего
-    // навсегда, поэтому отдаём управление сразу.
-    //
-    // Отказ при этом не глотается: он означает невыданное разрешение либо
-    // отсутствие команды, и о таком надо сказать в журнал — иначе кнопка
-    // просто молчит.
+    // Ответа не будет: команда уводит процесс целиком, обещание invoke не разрешится никогда.
+    // Отказ не глотается — иначе кнопка молчит.
     void invoke('animori_restart').catch((e) => {
       console.error('[AniMori] Перезапуск не удался', e)
     })
@@ -436,32 +381,6 @@ const tauriShell: IShell = {
   async openExternal(url: string): Promise<void> {
     // Проверка схемы на стороне Rust: разметка вправе позвать это с любым адресом.
     await invoke('animori_open_external', { url })
-  },
-
-  back(): Promise<void> {
-    // Через историю WebView: шаг по истории окна, а не по своему стеку экранов.
-    history.back()
-    return Promise.resolve()
-  },
-
-  forward(): Promise<void> {
-    history.forward()
-    return Promise.resolve()
-  },
-
-  async toggleFullscreen(): Promise<boolean> {
-    // Ответ команды — состояние ПОСЛЕ переключения, его и отдаём как есть.
-    return await invoke<boolean>('animori_toggle_fullscreen')
-  },
-
-  async castPanel(): Promise<void> {
-    // Своя команда, а не animori_open_external: там разрешены только http и https,
-    // а панель системы живёт по своей схеме. Расширять ту проверку значило бы отдать
-    // окну право запускать любое приложение системы по любому адресу.
-    //
-    // Ответа нет намеренно: какая из двух панелей открылась, знает только Rust,
-    // он же пишет это в журнал. Окну важен один факт: открылось или нет.
-    await invoke('animori_cast_panel')
   },
 }
 
@@ -478,7 +397,6 @@ export const tauriBridge: IBridge = {
   anilist: tauriAniList,
   clipboard: tauriClipboard,
   shell: tauriShell,
-  // Реализация в TauriProxyDiagnostics.ts.
   proxyDiagnostics: tauriProxyDiagnostics,
 }
 
