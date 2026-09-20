@@ -33,6 +33,26 @@ on:
     tags:
       - 'tv-*'
 
+  # Ручной запуск — для прогона без выпуска. По тегу прогон поднимается сам,
+  # но первый запуск конвейера всегда стоит проверить заранее: sdkmanager,
+  # наличие платформы и сборки NDK, npm ci. Пробный прогон собирает и
+  # подписывает оба APK, а публикацию пропускает — релиз не появляется,
+  # тег не создаётся, артефакты остаются во вкладке прогона.
+  #
+  # Номер версии берётся из поля tag, а не из ветки: у ручного запуска
+  # ref_name — это имя ветки (main), которое под образец tv-<версия>
+  # не подходит вовсе.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Тег выпуска'
+        required: true
+        default: 'tv-3.0.0'
+      dry:
+        description: 'Пробный прогон: собрать и подписать, но релиз не публиковать'
+        type: boolean
+        default: true
+
 # Без этого токен прогона только читает, и создание релиза упадёт на 403.
 permissions:
   contents: write
@@ -75,7 +95,7 @@ jobs:
         id: ver
         run: |
           set -euo pipefail
-          tag='${{ github.ref_name }}'
+          tag='${{ inputs.tag || github.ref_name }}'
           if [[ ! "$tag" =~ ^tv-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
             echo "::error::Имя тега '$tag' не подходит под tv-<версия>"
             exit 1
@@ -209,6 +229,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
 
+    # Пробный прогон сюда не доходит: сборки уже проверили ключ и подпись,
+    # а выпускать нечего.
+    if: ${{ github.event_name == 'push' || !inputs.dry }}
+
     steps:
       - name: Исходный код
         uses: actions/checkout@v4
@@ -217,7 +241,7 @@ jobs:
         id: ver
         run: |
           set -euo pipefail
-          tag='${{ github.ref_name }}'
+          tag='${{ inputs.tag || github.ref_name }}'
           if [[ ! "$tag" =~ ^tv-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
             echo "::error::Имя тега '$tag' не подходит под tv-<версия>"
             exit 1
@@ -270,7 +294,7 @@ jobs:
       - name: Релиз
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ inputs.tag || github.ref_name }}
           name: AniMori ${{ steps.ver.outputs.version }}
           body: ${{ steps.notes.outputs.body }}
           draft: false
