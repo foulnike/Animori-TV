@@ -247,8 +247,8 @@ jobs:
           # релиза — это и есть вся история версии, а окно обновления в
           # приложении урежет текст само (NOTES_LIMIT в src/app/update.ts).
           # Поле выпуска вмещает 125 тысяч знаков, так что тесно здесь не будет.
-          if len(body) > 20000:
-              body = body[:20000].rstrip() + '\n\n…полный список изменений — в CHANGELOG.md'
+          if len(body) > 60000:
+              body = body[:60000].rstrip() + '\n\n…полный список изменений — в CHANGELOG.md'
 
           print('body<<ANIMORI_NOTES')
           print(body)
