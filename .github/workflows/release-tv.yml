@@ -142,7 +142,16 @@ jobs:
       - name: Пакеты SDK
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses > /dev/null
+
+          # Лицензии принимаются ответом из файла, а не трубой `yes | …`.
+          # На свежем образе раннера они приняты заранее: sdkmanager закрывает
+          # ввод сразу, `yes` получает broken pipe, и под pipefail шаг падает,
+          # хотя делать было нечего — именно так прогон и сломался впервые.
+          # Отказ здесь не страшен: принять нечего — установка пройдёт сама,
+          # а если лицензия и правда нужна, упадёт уже следующая команда.
+          printf 'y\ny\ny\ny\ny\ny\ny\ny\ny\ny\n' > "$RUNNER_TEMP/sdk-yes.txt"
+          sdkmanager --licenses < "$RUNNER_TEMP/sdk-yes.txt" > /dev/null 2>&1 || true
+
           sdkmanager --install "platforms;android-36" "build-tools;35.0.0" "ndk;30.0.15729638"
 
           sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
