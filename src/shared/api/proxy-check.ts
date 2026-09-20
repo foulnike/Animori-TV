@@ -9,7 +9,7 @@ import { githubLimiter } from './rate-limit'
 
 /** Файл выпуска на GitHub: адрес разрешён в capabilities, отдаётся без входа. */
 const CHECK_URL =
-  'https://raw.githubusercontent.com/foulnike/AniMori-AniList-Toolkit/main/README.md'
+  'https://raw.githubusercontent.com/foulnike/Animori-TV/main/README.md'
 
 /** Потолок ожидания: проверка идёт по кнопке, и ждать дольше нечего. */
 const CHECK_TIMEOUT_MS = 8000
