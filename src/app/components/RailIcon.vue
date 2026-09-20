@@ -7,7 +7,7 @@ import type { MenuIcon } from '../router/routes'
 
 /// Имена значков: пункты меню (их имена живут в маршрутах, чтобы у пункта
 /// не было значка, которого нет в рисунке) и служебные действия рельса.
-type Kind = MenuIcon | 'back' | 'reload'
+type Kind = MenuIcon | 'back' | 'reload' | 'update'
 
 const props = defineProps<{ name: Kind }>()
 </script>
@@ -63,6 +63,14 @@ const props = defineProps<{ name: Kind }>()
 
     <template v-else-if="props.name === 'back'">
       <path d="M12.4 5 6.8 10l5.6 5" />
+    </template>
+
+    <!-- Обновление: стрелка в лоток. От «Обновить» (⟳) знак отличается направлением:
+         одно перезапускает окно, другое приносит новую версию. -->
+    <template v-else-if="props.name === 'update'">
+      <path d="M10 3.2v8.6" />
+      <path d="M6.6 8.6 10 12l3.4-3.4" />
+      <path d="M3.8 13.4v3.2h12.4v-3.2" />
     </template>
   </svg>
 </template>

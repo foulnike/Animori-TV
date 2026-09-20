@@ -24,6 +24,7 @@ import { forgetRecs } from '@/core/recs'
 import { saveSetting, settings } from '@/core/settings'
 
 import { APPEARANCES, appearance, setAppearance } from '../appearance'
+import { updateOffer, updateOpen } from '../update'
 import BrandMark from '../components/BrandMark.vue'
 import CloudBox from '../components/CloudBox.vue'
 import DatePick from '../components/DatePick.vue'
@@ -585,6 +586,18 @@ onMounted(() => {
               </span>
             </li>
           </ul>
+
+<!-- Проверка обновления кнопкой, а не только при старте: стартовая сверка могла не
+     дойти, а ждать следующего запуска у приставки долго — её выключают на ночь.
+     Подпись меняется, когда выпуск уже найден: тогда кнопка ведёт прямо к установке. -->
+          <button
+            class="am-btn am-btn--soft am-up"
+            :class="{ 'am-up--new': updateOffer !== null }"
+            type="button"
+            @click="updateOpen = true"
+          >
+            {{ updateOffer ? `Обновление до ${updateOffer.version}` : 'Проверить обновление' }}
+          </button>
 
 <!-- Плашки с просьбой о звезде здесь больше нет: она вела на GitHub, а ссылку наружу на телевизоре открыть нечем. -->
 

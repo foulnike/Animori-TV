@@ -10,9 +10,11 @@ import { markFirstPaint } from '@/core/playable'
 
 import { refreshAuth, watchAuth } from './auth/session'
 import AppShell from './components/AppShell.vue'
+import UpdateBox from './components/UpdateBox.vue'
 import { closePerson, shownPerson } from './person-layer'
 import { currentRoute, startRouter } from './router'
 import type { ScreenName } from './router/routes'
+import { updateOpen } from './update'
 import './styles/theme.css'
 
 // Полный набор имён обязателен: забытый экран уронит проверку типов,
@@ -87,4 +89,8 @@ onBeforeUnmount(() => {
   <!-- Рядом с рамкой, а не внутри неё: блюр рельса создаёт свой контекст
        наложения, и окошко внутри него прижалось бы к содержимому. -->
   <PersonSheet v-if="shownPerson" :start="shownPerson" @close="closePerson" />
+
+  <!-- Окно обновления уводится в body само (Teleport). Открыто оно бывает редко,
+       но открыть его могут откуда угодно, поэтому стоит здесь, в корне. -->
+  <UpdateBox :open="updateOpen" @close="updateOpen = false" />
 </template>

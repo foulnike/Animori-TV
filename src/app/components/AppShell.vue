@@ -12,6 +12,7 @@ import { runBackStop } from '../back-stop'
 import { isWeakPlatform } from '../platform'
 import { currentRoute, goBack, navigate, navDirection } from '../router'
 import { MENU, SCREEN_TITLES } from '../router/routes'
+import { updateOffer, updateOpen } from '../update'
 
 import AppMark from './AppMark.vue'
 import RailIcon from './RailIcon.vue'
@@ -150,6 +151,19 @@ function onReload(): void {
         >
           <span class="am-side__icon"><RailIcon name="reload" /></span>
           <span class="am-side__text">Обновить</span>
+        </button>
+
+<!-- Пункт обновления появляется сам, когда проверка при старте нашла выпуск новее,
+     и живёт последним: он не действие на каждый день, а редкий случай. От «Обновить»
+     его отличает и значок, и подпись: то перезапускает окно, это приносит новую версию. -->
+        <button
+          v-if="lite && updateOffer"
+          class="am-side__item am-side__item--act am-side__item--new"
+          type="button"
+          @click="updateOpen = true"
+        >
+          <span class="am-side__icon am-side__icon--dot"><RailIcon name="update" /></span>
+          <span class="am-side__text">Новая версия</span>
         </button>
       </nav>
 
@@ -310,11 +324,31 @@ function onReload(): void {
 
 /* Значок пункта — в своём квадрате с центровкой по двум осям: text-align ровнял только по горизонтали, а по вертикали знак стоял на базовой линии шрифта, и ряд пунктов плясал. */
 .am-side__icon {
+  position: relative;
   display: grid;
   flex: none;
   place-items: center;
   width: 20px;
   height: 20px;
+}
+
+/* Точка у значка: свёрнутый рельс подписи не показывает, и «есть обновление»
+   иначе сообщил бы один вид нового пункта — его легко не заметить. */
+.am-side__icon--dot::after {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  content: '';
+  background: var(--am-accent);
+  border: 1px solid var(--am-panel-2);
+  border-radius: 50%;
+}
+
+/* Сам пункт — акцентом: это не служебное действие, а предложение. */
+.am-side__item--new {
+  color: var(--am-text);
 }
 
 .am-side__foot {

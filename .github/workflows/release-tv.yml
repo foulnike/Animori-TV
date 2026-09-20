@@ -1,0 +1,276 @@
+# Сборка и выкладка выпуска для приставки.
+#
+# Запуск только по тегу `tv-*`. Приставка — не компьютер: Tauri не умеет
+# обновлять её сам (плагин апдейтера существует только для десктопа), поэтому
+# здесь нет ни latest.json, ни подписи Tauri. Приложение само спрашивает
+# список выпусков, выбирает файл по разрядности устройства и отдаёт его системе;
+# целостность проверяет Android — установка встаёт только на файл, подписанный
+# тем же ключом, что и установленная копия. Разбор — в docs/BUILD.md.
+#
+# Имена файлов обязательны: src/app/update.ts ищет ровно
+#   AniMori_<версия>_armv7.apk   и   AniMori_<версия>_arm64.apk
+# по разрядности устройства. Переименуешь артефакт — обновление перестанет
+# находиться, хотя выпуск вышел.
+#
+# Что уезжает в релиз: два APK, по одному на разрядность. Универсального
+# файла нет: он весит вдвое больше, а скачивает его приставка по Wi-Fi.
+#
+# Номер версии берётся из имени тега и сверяется с package.json — тем самым
+# файлом, откуда номер берёт Tauri (tauri.conf.json, "version": "../package.json")
+# и по которому приложение решает, новее ли найденный выпуск. Тег tv-3.0.1
+# при номере 3.0.0 в файлах дал бы выпуск, который никто не получит. Лучше
+# упасть здесь за полминуты, чем выкатить мёртвый файл.
+#
+# ВАЖНО ПРО ОТМЕНУ. Удаление тега уже запущенный прогон не останавливает: он
+# работает со своей копией кода и на финальном шаге создаёт тег заново вместе
+# с релизом. Чтобы отменить выпуск, сначала жми Cancel во вкладке Actions,
+# и только потом удаляй тег.
+
+name: release-tv
+
+on:
+  push:
+    tags:
+      - 'tv-*'
+
+# Без этого токен прогона только читает, и создание релиза упадёт на 403.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # Разрядность — отдельным прогоном: Rust компилируется под каждую цель
+    # заново, и в одном прогоне вторая сборка не взяла бы ничего из первой.
+    strategy:
+      fail-fast: false
+      matrix:
+        # abi — приставка в имени файла (её ищет src/app/update.ts по разрядности
+        # устройства); target — тройка Rust; cli — имя цели для `tauri android build`,
+        # у которого свой набор имён и своего arm64 нет вовсе.
+        include:
+          - abi: armv7
+            target: armv7-linux-androideabi
+            cli: armv7
+          - abi: arm64
+            target: aarch64-linux-android
+            cli: aarch64
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Исходный код
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Номер версии из имени тега и сверка с package.json.
+      #
+      # Номер берётся образцом, а не отрезанием приставки: тег tv-3.0 или
+      # tv-3.0.0-rc1 тихо дал бы странное имя файла вместо отказа.
+      - name: Номер версии из тега
+        id: ver
+        run: |
+          set -euo pipefail
+          tag='${{ github.ref_name }}'
+          if [[ ! "$tag" =~ ^tv-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::Имя тега '$tag' не подходит под tv-<версия>"
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}"
+          declared="$(node -p "require('./package.json').version")"
+          if [[ "$version" != "$declared" ]]; then
+            echo "::error::Номер в теге ($version) расходится с package.json ($declared)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Выпуск приставки: $version (тег $tag)"
+
+      - name: Окружение Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Компиляция зависимостей Tauri с нуля — это минуты. Кэш привязан к
+      # Cargo.lock, который у нас закоммичен, поэтому попадание стабильно.
+      - name: Кэш Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Java 17: его требует Android Gradle Plugin 8.x. Более новый не нужен,
+      # а более старый Gradle 8.14 не примет вовсе.
+      - name: Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      # Пакеты ставятся явно. Действие выше приносит только инструменты
+      # командной строки и platform-tools: сборщик сам докачивал бы платформу,
+      # но NDK он не докачивает, а без него Rust не соберётся.
+      #
+      # Версии — те же, что на машине разработчика (NDK 30, build-tools 35,
+      # платформа 36; compileSdk в созданном проекте тоже 36). Расхождение
+      # версий NDK между сборками даёт разные .so при том же исходнике.
+      - name: Пакеты SDK
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager --install "platforms;android-36" "build-tools;35.0.0" "ndk;30.0.15729638"
+
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [[ -z "$sdk" ]]; then
+            echo "::error::Ни ANDROID_HOME, ни ANDROID_SDK_ROOT не заданы"
+            exit 1
+          fi
+          {
+            echo "ANDROID_HOME=$sdk"
+            echo "ANDROID_NDK_HOME=$sdk/ndk/30.0.15729638"
+            echo "NDK_HOME=$sdk/ndk/30.0.15729638"
+          } >> "$GITHUB_ENV"
+
+      # Нужны для beforeBuildCommand: сборку переднего края (npm run build:app)
+      # запускает сам tauri перед компиляцией Rust.
+      - name: Зависимости npm
+        run: npm ci
+
+      # Сборка. Файл выходит неподписанным — так делает Tauri и на компьютере:
+      # ключа выпуска у него нет. Подписываем следующим шагом.
+      - name: Сборка APK
+        run: npm run tauri -- android build -t ${{ matrix.cli }}
+
+      # Подпись, выравнивание и имя файла.
+      #
+      # Порядок обязателен: zipalign до подписи. Подписанный файл трогать
+      # нельзя — выравнивание сдвинет содержимое, и подпись перестанет
+      # сходиться. apksigner вызывается jar-файлом, а не обёрткой:
+      # обёртка под Windows (apksigner.bat) молча ничего не делает.
+      #
+      # Ключ приходит только из секретов. В исходных файлах его нет ни в каком
+      # виде и быть не может. Он же — тот, которым подписана установленная
+      # копия: смени его — и Android откажется ставить обновление поверх.
+      - name: Подпись APK
+        env:
+          KS_BASE64: ${{ secrets.ANIMORI_KEYSTORE_BASE64 }}
+          KS_PASSWORD: ${{ secrets.ANIMORI_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANIMORI_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANIMORI_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          version='${{ steps.ver.outputs.version }}'
+          abi='${{ matrix.abi }}'
+          tools="$ANDROID_HOME/build-tools/35.0.0"
+
+          # Один файл, а не «первый попавшийся»: два APK в выводе означают,
+          # что сборка положила рядом остаток прежней, и подписать можно не то.
+          mapfile -t found < <(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk')
+          if [[ "${#found[@]}" -ne 1 ]]; then
+            echo "::error::В выводе сборки не один APK: ${found[*]}"
+            exit 1
+          fi
+
+          mkdir -p out
+          echo "$KS_BASE64" | base64 -d > out/animori.jks
+
+          "$tools/zipalign" -p -f 4 "${found[0]}" out/aligned.apk
+
+          java -jar "$tools/lib/apksigner.jar" sign \
+            --ks out/animori.jks \
+            --ks-key-alias "$KS_ALIAS" \
+            --ks-pass "pass:$KS_PASSWORD" \
+            --key-pass "pass:$KEY_PASSWORD" \
+            --out "out/AniMori_${version}_${abi}.apk" \
+            out/aligned.apk
+
+          # Проверка перед выкладкой: неподписанный или битый файл приставка
+          # не поставит, а поймёт это человек лишь нажав «Установить».
+          java -jar "$tools/lib/apksigner.jar" verify "out/AniMori_${version}_${abi}.apk"
+
+          rm -f out/animori.jks out/aligned.apk
+          ls -l "out/AniMori_${version}_${abi}.apk"
+
+      - name: Артефакт прогона
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ matrix.abi }}
+          path: out/AniMori_${{ steps.ver.outputs.version }}_${{ matrix.abi }}.apk
+          if-no-files-found: error
+
+  publish:
+    # Отдельной задачей, а не шагом внутри сборки: релиз один на две
+    # разрядности, и создавать его должен тот, кто дождался обеих сборок.
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Исходный код
+        uses: actions/checkout@v4
+
+      - name: Номер версии из тега
+        id: ver
+        run: |
+          set -euo pipefail
+          tag='${{ github.ref_name }}'
+          if [[ ! "$tag" =~ ^tv-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::Имя тега '$tag' не подходит под tv-<версия>"
+            exit 1
+          fi
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+
+      # Описание релиза — это и есть текст, который приложение показывает
+      # в окне обновления: src/app/update.ts берёт его из поля выпуска.
+      # Поэтому отсылка вида «См. CHANGELOG.md» здесь бесполезна — человек
+      # увидит её вместо перечня изменений.
+      - name: Описание релиза из CHANGELOG
+        id: notes
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import pathlib
+
+          lines = pathlib.Path('CHANGELOG.md').read_text(encoding='utf-8').splitlines()
+          marks = [i for i, line in enumerate(lines) if line.startswith('## [')]
+          if not marks:
+              raise SystemExit('В CHANGELOG.md не найдено ни одного раздела вида "## [версия]"')
+
+          start = marks[0] + 1
+          end = marks[1] if len(marks) > 1 else len(lines)
+          body = '\n'.join(lines[start:end]).strip()
+
+          # Потолок на случай очень большого раздела: текст уходит в окно
+          # обновления, раздувать его нечем.
+          if len(body) > 3000:
+              body = body[:3000].rstrip() + '\n\n…полный список изменений — в CHANGELOG.md'
+
+          print('body<<ANIMORI_NOTES')
+          print(body)
+          print('ANIMORI_NOTES')
+          PY
+
+      - name: Собрать файлы выпуска
+        uses: actions/download-artifact@v4
+        with:
+          pattern: apk-*
+          path: dist
+          merge-multiple: true
+
+      # Релиз создаётся здесь, а не tauri-action: подписи Tauri у нас нет,
+      # и latest.json для приставки не нужен — приложение само читает
+      # список выпусков. Черновик и предварительный релиз выключены
+      # осознанно: приложение берёт первый выпуск с приставкой tv- и
+      # не отличает черновик от опубликованного.
+      - name: Релиз
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: AniMori ${{ steps.ver.outputs.version }}
+          body: ${{ steps.notes.outputs.body }}
+          draft: false
+          prerelease: false
+          files: dist/*.apk

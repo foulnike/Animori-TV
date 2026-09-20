@@ -7,6 +7,7 @@ import { seen } from './see-tile'
 import { tip } from './tip'
 import { startDpad } from './dpad'
 import { isWeakPlatform, markPlatform } from './platform'
+import { startUpdateCheck } from './update'
 import { initCollection } from '@/core/collection'
 import { initDatasetNames, updateDatasetNamesInBackground } from '@/core/dataset-names'
 import { loadSettings } from '@/core/settings'
@@ -80,6 +81,11 @@ async function start(): Promise<void> {
 
   void initDatasetNames()
   updateDatasetNamesInBackground()
+
+  // Сверка версии — только на приставке: установку оттуда отдаёт системе оболочка,
+  // а на компьютере того же моста нет. Неудача проверки ничему не мешает.
+  if (isWeakPlatform()) void startUpdateCheck()
+
   console.log('[am-start] start() end')
 }
 
