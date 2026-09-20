@@ -41,6 +41,20 @@ AniMori — неофициальный проект и не связан с ко
 > юзерскрипт для браузера — `foulnike/Animori-Script`. Общего кода между ними
 > нет.
 
+## Как выглядит
+
+<p align="center">
+  <img src="screens/preview-calendar.png" width="23%" alt="Календарь выхода серий" />
+  <img src="screens/preview-recs.png" width="23%" alt="Рекомендации" />
+  <img src="screens/preview-lists.png" width="23%" alt="Мои списки" />
+  <img src="screens/preview-card.png" width="23%" alt="Карточка тайтла" />
+</p>
+
+Полные кадры 1920×1080 — [`screens/calendar.png`](screens/calendar.png),
+[`screens/recs.png`](screens/recs.png),
+[`screens/lists.png`](screens/lists.png) и
+[`screens/card.png`](screens/card.png).
+
 ## Установка
 
 Готовый файл лежит на [странице выпусков](https://github.com/foulnike/Animori-TV/releases/latest):
