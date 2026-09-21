@@ -230,7 +230,8 @@ function onReload(): void {
   width: 34px;
   height: 34px;
   border-radius: 12px;
-  box-shadow: 0 8px 22px rgb(var(--am-accent-rgb) / 0.35);
+  /* Ареол ровно по знаку: со смещением вниз он читался не подсветкой эмблемы, а пятном под ней. */
+  box-shadow: 0 0 22px rgb(var(--am-accent-rgb) / 0.35);
 }
 
 /* На AMOLED ореол убирается: свечение вокруг тёмного знака на чистом чёрном читается грязным пятном. */

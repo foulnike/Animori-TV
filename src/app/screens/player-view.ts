@@ -73,6 +73,22 @@ export function episodeLabel(item: VideoEpisode): string {
   return name === '' ? `Серия ${item.number}` : `${item.number}. ${name}`
 }
 
+/** «1 серия», «3 серии», «12 серий». */
+function episodeWord(count: number): string {
+  const ten = count % 10
+  const hundred = count % 100
+  if (ten === 1 && hundred !== 11) return 'серия'
+  if (ten >= 2 && ten <= 4 && (hundred < 10 || hundred >= 20)) return 'серии'
+  return 'серий'
+}
+
+/** Озвучка со счётом серий: «Студийная · 12 серий». Ноль читается как «источник не сказал» —
+ *  тогда пишется одно имя, а не «· 0 серий». */
+export function voiceLine(row: VoiceRow): string {
+  if (row.episodes <= 0) return row.label
+  return `${row.label} · ${row.episodes} ${episodeWord(row.episodes)}`
+}
+
 function describe(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }

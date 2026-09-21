@@ -55,7 +55,7 @@ import {
   whenWatchReady,
   type WatchWhat,
 } from './player-keep'
-import { episodeLabel, usePlayer } from './player-view'
+import { episodeLabel, usePlayer, voiceLine, type VoiceRow } from './player-view'
 
 /** Знак кнопки — рисунок в квадрате 24×24, а не символ шрифта. Символами панель и была:
  * у каждого своя ширина и наплыв над базовой линией, оттого знаки стояли в кнопках вкривь.
@@ -96,6 +96,9 @@ const LINE = {
   again: 'M20 12a8 8 0 1 1-8-8',
   tick: 'M5 12.5l4.5 4.5L19 7.5',
   left: 'M15 5l-7 7 7 7',
+// Край списка: стрелка в упор к черте.
+  first: 'M6.5 6h11M12 19V9M7.5 14l4.5-5 4.5 5',
+  last: 'M6.5 18h11M12 5v10M7.5 10l4.5 5 4.5-5',
 } as const
 
 /** Кнопка панели: подпись, знак и что делать. Разметка из этого списка одна.
@@ -259,13 +262,17 @@ let renewMisses = 0
  * смена источника, конец буфера — сюда не пишется. Иначе замена адреса оставляла бы кадр стоять. */
 let meant = false
 
-const voiceLabel = computed<string>(
-  () => voices.value.find((v) => v.key === voiceKey.value)?.label ?? '',
+/** Выбранная озвучка: из неё и подпись, и счёт серий. */
+const voiceRow = computed<VoiceRow | null>(
+  () => voices.value.find((v) => v.key === voiceKey.value) ?? null,
 )
 
-/** Подзаголовок: источник, озвучка и серия одной строкой. */
+const voiceLabel = computed<string>(() => voiceRow.value?.label ?? '')
+
+/** Подзаголовок: источник, озвучка со счётом серий и серия одной строкой. */
 const subLine = computed<string>(() => {
-  const parts = [sourceLabel.value, voiceLabel.value]
+  const parts = [sourceLabel.value]
+  if (voiceRow.value !== null) parts.push(voiceLine(voiceRow.value))
   const ep = current.value
   if (ep !== null) parts.push(episodeLabel(ep))
   return parts.filter((p) => p !== '').join(' · ')
@@ -402,6 +409,20 @@ function takeVoice(key: string): void {
 function takeEpisode(number: number): void {
   pickEpisode(number)
   menu.value = ''
+}
+
+/** Край списка серий. У длинных тайтлов больше тысячи серий, и дойти до конца стрелками нельзя:
+ * одно нажатие — одна строка. Список остаётся открытым: прыжок ещё не выбор серии. */
+function jumpEpisode(side: 'start' | 'end'): void {
+  const box = rootEl.value?.querySelector<HTMLElement>('[data-zone="menu"]')
+  if (box === null || box === undefined) return
+
+  const rows = Array.from(box.querySelectorAll<HTMLElement>('button.am-play__opt'))
+  const aim = side === 'start' ? rows[0] : rows[rows.length - 1]
+  if (aim === undefined) return
+
+  box.scrollTop = side === 'start' ? 0 : box.scrollHeight
+  aim.focus()
 }
 
 /** Раскрывает меню панели и запоминает кнопку, которая его раскрыла: строка списка
@@ -1443,7 +1464,7 @@ onBeforeUnmount(() => {
                           <span class="am-play__opt-tick">
                             <Icon v-if="voice.key === voiceKey" :line="LINE.tick" />
                           </span>
-                          <span>{{ voice.label }}</span>
+                          <span>{{ voiceLine(voice) }}</span>
                         </button>
                       </li>
                     </ul>
@@ -1458,7 +1479,7 @@ onBeforeUnmount(() => {
                     </button>
                   </div>
 
-                  <div v-if="lite && episodes.length > 0" class="am-play__pick">
+                  <div v-if="lite && episodes.length > 0" class="am-play__pick am-play__pick--jump">
                     <ul v-if="menu === 'episodes'" class="am-play__menu" data-zone="menu">
                       <li v-for="item in episodes" :key="item.number">
                         <button
@@ -1476,6 +1497,27 @@ onBeforeUnmount(() => {
                         </button>
                       </li>
                     </ul>
+
+<!-- Края списка стоят отдельно, а не строкой внутри: внутри они уезжали бы вместе с прокруткой. -->
+                    <div v-if="menu === 'episodes'" class="am-play__jump" data-zone="jump">
+                      <button
+                        class="am-play__jump-key"
+                        type="button"
+                        aria-label="Первая серия"
+                        @click="jumpEpisode('start')"
+                      >
+                        <Icon :line="LINE.first" />
+                      </button>
+
+                      <button
+                        class="am-play__jump-key"
+                        type="button"
+                        aria-label="Последняя серия"
+                        @click="jumpEpisode('end')"
+                      >
+                        <Icon :line="LINE.last" />
+                      </button>
+                    </div>
 
                     <button
                       class="am-play__key am-play__key--word"
@@ -1520,11 +1562,8 @@ onBeforeUnmount(() => {
                   type="button"
                   @click="pickVoice(voice.key)"
                 >
-                  <span class="am-play__word-cut">{{ voice.label }}</span>
+                  <span class="am-play__word-cut">{{ voiceLine(voice) }}</span>
                   <span class="am-play__src">{{ voice.sourceLabel }}</span>
-                  <span v-if="voice.episodes > 0" class="am-play__time">
-                    серий: {{ voice.episodes }}
-                  </span>
                 </button>
               </li>
             </ul>

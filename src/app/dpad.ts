@@ -104,20 +104,45 @@ function nearest(from: HTMLElement, dir: Dir, items: HTMLElement[]): HTMLElement
   return walk(true) ?? walk(false)
 }
 
-/// Область поиска — верхнее из открытых окон: из окна фокус не должен уходить на то, что за ним.
-/// `offsetParent` не годится (у `position: fixed` он всегда null), а верхнее — последнее в разметке.
-function scope(): ParentNode {
+/// Верхнее из открытых окон; `null` — открытых окон нет. `offsetParent` не годится
+/// (у `position: fixed` он всегда null), а верхнее — последнее в разметке.
+function topDialog(): HTMLElement | null {
   const all = document.querySelectorAll<HTMLElement>('[role="dialog"]')
   for (let i = all.length - 1; i >= 0; i--) {
     const node = all[i]
     if (node !== undefined && seen(node)) return node
   }
-  return document
+  return null
+}
+
+/// Область поиска — верхнее из открытых окон: из окна фокус не должен уходить на то, что за ним.
+function scope(): ParentNode {
+  return topDialog() ?? document
+}
+
+/// Метка «плита со своей прокруткой»: за длинный текст пульту надо зацепиться, а не фокусируемый
+/// `div` до фокуса не доходит вовсе. Общего правила «у кого есть overflow, тот и крутится» мало:
+/// у текстового поля `scrollWidth` больше `clientWidth`, и стрелка вправо крутила бы его вместо перехода.
+const SCROLLER = 'data-am-scroll'
+
+/// Запас прокрутки самой плиты в сторону `dir`: ноль — крутить нечего, и стрелка уводит фокус.
+function plateRoom(el: HTMLElement, dir: Dir): number {
+  const horiz = dir === 'left' || dir === 'right'
+  const way = getComputedStyle(el)
+  const overflow = horiz ? way.overflowX : way.overflowY
+  if (overflow !== 'auto' && overflow !== 'scroll') return 0
+
+  const span = horiz ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight
+  if (span <= 1) return 0
+
+  const gone = horiz ? el.scrollLeft : el.scrollTop
+  return dir === 'up' || dir === 'left' ? gone : span - gone
 }
 
 /// Толкает ближайшего прокручиваемого родителя в сторону `dir`: у конца ряда фокусу некуда идти, а за краем ещё есть
-/// плитки. Предка с `overflow` у страницы нет — её крутит окно, поэтому вторая ветка про окно.
-function nudge(from: HTMLElement, dir: Dir): boolean {
+/// плитки. `root` — граница окна: за ней прокрутка экрана, на котором окно открыто, и трогать её нельзя.
+/// Предка с `overflow` у страницы нет — её крутит окно, поэтому вторая ветка про окно.
+function nudge(from: HTMLElement, dir: Dir, root: HTMLElement | null): boolean {
   const horiz = dir === 'left' || dir === 'right'
   const sign = dir === 'right' || dir === 'down' ? 1 : -1
 
@@ -125,7 +150,10 @@ function nudge(from: HTMLElement, dir: Dir): boolean {
     const overflow = horiz
       ? getComputedStyle(node).overflowX
       : getComputedStyle(node).overflowY
-    if (overflow !== 'auto' && overflow !== 'scroll') continue
+    if (overflow !== 'auto' && overflow !== 'scroll') {
+      if (node === root) break
+      continue
+    }
 
     const was = horiz ? node.scrollLeft : node.scrollTop
     const step = (horiz ? node.clientWidth : node.clientHeight) * 0.8
@@ -136,6 +164,9 @@ function nudge(from: HTMLElement, dir: Dir): boolean {
     })
     return (horiz ? node.scrollLeft : node.scrollTop) !== was
   }
+
+  // Открытое окно: прокрутка кончилась на его границе, и крутить экран за ним не надо.
+  if (root !== null) return false
 
   const was = horiz ? window.scrollX : window.scrollY
   const step = (horiz ? window.innerWidth : window.innerHeight) * 0.8
@@ -165,6 +196,9 @@ function slide(box: HTMLElement, target: HTMLElement, horiz: boolean, center: bo
   const was = horiz ? box.scrollLeft : box.scrollTop
 
   let want = was
+  // Цель и так вся в кадре — крутить нечего. Без этой проверки центрирование срабатывало на каждом
+  // шаге и двигало всю полку целиком: работы в карточке человека поднимались и опускались скопом.
+  if (at >= 0 && at + size <= view) return
   if (center) want = was + at - (view - size) / 2
   else if (at < 0) want = was + at
   else if (at + size > view) want = was + at + size - view
@@ -179,13 +213,27 @@ function slide(box: HTMLElement, target: HTMLElement, horiz: boolean, center: bo
 }
 
 /// Доводит фокус до середины кадра, а у вложенного списка — до середины самой плитки.
-/// `scrollIntoView` обходит всех прокручиваемых предков и увозит страницу, поэтому список крутим сами.
-function bringToFocus(target: HTMLElement, alongY: boolean): void {
+/// `root` — граница окна. `scrollIntoView` обходит всех прокручиваемых предков: внутри окна он
+/// доходит и до экрана за ним, и тот уезжает под собственным окном. Поэтому окно доводим сами,
+/// по предкам до самой его границы, а `scrollIntoView` оставляем странице без окон.
+function bringToFocus(target: HTMLElement, alongY: boolean, root: HTMLElement | null): void {
   const hold = target.closest<HTMLElement>('[data-hold]')
 
   if (hold !== null) slide(hold, target, !alongY, true)
 
   const aim = hold ?? target
+
+  if (root !== null) {
+    for (let node = aim.parentElement; node; node = node.parentElement) {
+      if (node instanceof HTMLElement) {
+        slide(node, aim, false, alongY)
+        slide(node, aim, true, !alongY)
+      }
+      if (node === root) break
+    }
+    return
+  }
+
   aim.scrollIntoView({
     block: alongY ? 'center' : 'nearest',
     inline: alongY ? 'nearest' : 'center',
@@ -386,7 +434,23 @@ export function startDpad(): () => void {
     const roll = now instanceof HTMLElement ? now.closest('.am-roll') : null
     if (roll !== null && roll.querySelector('[aria-expanded="true"]') !== null) return
 
-    const area = scope()
+    // Фокус стоит на плите со своей прокруткой: пока есть запас, стрелка вдоль оси крутит её, а не
+    // уводит фокус. Иначе за описание не зацепиться — оно кончается за краем, а листать его нечем.
+    if (now instanceof HTMLElement && now.hasAttribute(SCROLLER)) {
+      const horiz = dir === 'left' || dir === 'right'
+      const back = dir === 'up' || dir === 'left'
+      const room = plateRoom(now, dir)
+      if (room > 1) {
+        e.preventDefault()
+        const piece = Math.max(48, Math.round((horiz ? now.clientWidth : now.clientHeight) * 0.75))
+        const shift = back ? -Math.min(piece, room) : Math.min(piece, room)
+        now.scrollBy({ left: horiz ? shift : 0, top: horiz ? 0 : shift, behavior: 'smooth' })
+        return
+      }
+    }
+
+    const root = topDialog()
+    const area: ParentNode = root ?? document
     const items = candidates(area)
     if (items.length === 0) return
 
@@ -405,7 +469,7 @@ export function startDpad(): () => void {
     // отпущенное нажатие достаётся оболочке, а та водит фокус своим порядком и уводит его в рельс.
     if (!target) {
       e.preventDefault()
-      if (now instanceof HTMLElement) nudge(now, dir)
+      if (now instanceof HTMLElement) nudge(now, dir, root)
       return
     }
 
@@ -422,7 +486,7 @@ export function startDpad(): () => void {
     // Фокус доводится до середины кадра по оси перехода, по другой оси остаётся `nearest`: центрировать обе
     // сразу значит сдвигать кадр каждый шаг.
     const alongY = dir === 'up' || dir === 'down'
-    bringToFocus(target, alongY)
+    bringToFocus(target, alongY, root)
 
     markTile(target)
     planRail()

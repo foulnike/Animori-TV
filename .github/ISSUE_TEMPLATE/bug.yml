@@ -7,7 +7,7 @@ body:
     attributes:
       label: Версия
       description: Настройки, раздел «О программе». Номер стоит и внизу рельсы.
-      placeholder: 3.0.0
+      placeholder: 3.0.1
     validations:
       required: true
   - type: input

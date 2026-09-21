@@ -1202,6 +1202,13 @@ html.am-lite {
   margin: 0 0 4px !important;
 }
 
+/* В ряду заголовку нечего отбивать. Правило выше весит `!important`, поэтому его 4 px снизу
+   доживают и здесь: ряд ровняет по внешней коробке, заголовок уходит на 2 px вверх,
+   и счётчик рядом стоит ниже его строки. */
+.am-lite .am-bar > .am-h3 {
+  margin-bottom: 0 !important;
+}
+
 .am-lite .am-panel,
 .am-lite .am-about-box {
   padding: 8px !important;

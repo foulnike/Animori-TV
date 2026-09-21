@@ -727,6 +727,7 @@
    подсветку, что по наведению, — как в плеере на компьютере. */
 .am-lite .am-play__key:focus-visible,
 .am-lite .am-play__opt:focus-visible,
+.am-lite .am-play__jump-key:focus-visible,
 .am-lite .am-play__back:focus-visible {
   background: rgb(255 255 255 / 0.16);
 }
@@ -815,6 +816,58 @@
 .am-play__opt-tick .am-play__ico {
   width: 16px;
   height: 16px;
+}
+
+/*
+ * Края списка серий.
+ *
+ * У длинных тайтлов больше тысячи серий, и дойти до конца списка стрелками нельзя:
+ * одно нажатие — одна строка. Две кнопки ведут сразу на первую и на последнюю.
+ * Стоят отдельной коробкой справа от списка: строкой внутри они уезжали бы вместе с прокруткой.
+ */
+
+.am-play__jump {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 38px);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: var(--am-r-m);
+  background: rgb(10 12 17 / 0.96);
+  box-shadow: var(--am-sh-2);
+  animation: am-play-pop var(--am-fast) var(--am-ease) both;
+  gap: 6px;
+}
+
+.am-play__jump-key {
+  display: grid;
+  width: var(--am-ctl);
+  height: var(--am-ctl);
+  border: 0;
+  border-radius: var(--am-r-s);
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  place-items: center;
+}
+
+.am-play__jump-key:hover {
+  background: rgb(255 255 255 / 0.12);
+}
+
+.am-play__jump-key .am-play__ico {
+  width: 22px;
+  height: 22px;
+}
+
+/* Список уступает кнопкам их ширину: они стоят вплотную к правому краю кнопки панели,
+   а за её пределы выходить нельзя — там край кадра. */
+
+.am-play__pick--jump .am-play__menu {
+  right: 60px;
 }
 
 /* Списки */
@@ -1207,6 +1260,7 @@
 
   .am-play__hold,
   .am-play__menu,
+  .am-play__jump,
   .am-play__side,
   .am-play__resume,
   .am-play__skip {

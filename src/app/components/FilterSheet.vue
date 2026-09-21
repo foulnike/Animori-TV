@@ -256,13 +256,6 @@ function stepYear(side: YearSide, step: number): void {
   onYears()
 }
 
-/** Упёрлась ли стрелка в край каталога: дальше нажимать нечего. */
-function stepOff(side: YearSide, step: number): boolean {
-  const year = readYear(yearText(side))
-  if (year === null) return false
-  return step > 0 ? year >= yearMax : year <= YEAR_MIN
-}
-
 /** Готовый промежуток: повторное нажатие снимает годы вовсе. */
 function useSpan(span: YearSpan): void {
   const same = draft.value.yearFrom === span.from && draft.value.yearTo === span.till
@@ -414,6 +407,17 @@ onBeforeUnmount(() => {
                 <span class="am-meta">{{ field.title }}</span>
 
                 <div class="am-year">
+                  <button
+                    class="am-year__step"
+                    type="button"
+                    :aria-label="`${field.title}: меньше`"
+                    @click="stepYear(field.side, -1)"
+                  >
+                    <svg class="am-year__arrow" viewBox="0 0 12 8" aria-hidden="true">
+                      <path d="M2.6 4 H9.4" />
+                    </svg>
+                  </button>
+
                   <input
                     class="am-input am-year__field"
                     type="text"
@@ -424,37 +428,18 @@ onBeforeUnmount(() => {
                     :placeholder="field.hint"
                     :value="yearText(field.side)"
                     @input="onYearInput(field.side, $event)"
-                    @keydown.up.prevent="stepYear(field.side, 1)"
-                    @keydown.down.prevent="stepYear(field.side, -1)"
                   />
 
-                  <span class="am-year__steps">
-                    <button
-                      class="am-year__step"
-                      type="button"
-                      tabindex="-1"
-                      :disabled="stepOff(field.side, 1)"
-                      :aria-label="`${field.title}: больше`"
-                      @click="stepYear(field.side, 1)"
-                    >
-                      <svg class="am-year__arrow" viewBox="0 0 12 8" aria-hidden="true">
-                        <path d="M1.7 5.8 6 1.9 10.3 5.8" />
-                      </svg>
-                    </button>
-
-                    <button
-                      class="am-year__step"
-                      type="button"
-                      tabindex="-1"
-                      :disabled="stepOff(field.side, -1)"
-                      :aria-label="`${field.title}: меньше`"
-                      @click="stepYear(field.side, -1)"
-                    >
-                      <svg class="am-year__arrow" viewBox="0 0 12 8" aria-hidden="true">
-                        <path d="M1.7 2.2 6 6.1 10.3 2.2" />
-                      </svg>
-                    </button>
-                  </span>
+                  <button
+                    class="am-year__step"
+                    type="button"
+                    :aria-label="`${field.title}: больше`"
+                    @click="stepYear(field.side, 1)"
+                  >
+                    <svg class="am-year__arrow" viewBox="0 0 12 8" aria-hidden="true">
+                      <path d="M2.6 4 H9.4 M6 1.4 V6.6" />
+                    </svg>
+                  </button>
                 </div>
               </div>
             </div>
@@ -874,64 +859,49 @@ onBeforeUnmount(() => {
 
 .am-years__one {
   display: flex;
-  flex: 1 1 140px;
+  flex: 1 1 190px;
   flex-direction: column;
   gap: 6px;
 }
 
-/* Своя пара стрелок вместо родного счётчика: место под них отведено отступом поля, чтобы цифры не заезжали под кнопки. */
+/* Свой счётчик вместо родного: «−» и «+» стоят по бокам поля и в обходе пульта — это единственный
+   способ двинуть год, не поднимая клавиатуру. Вверх и вниз год не двигают: этими стрелками пульт
+   проходит сквозь поле к соседям, и шаг на проходе был побочным действием. */
 .am-year {
-  position: relative;
   display: flex;
+  gap: 6px;
 }
 
 .am-year__field {
   width: 100%;
-  padding-right: 36px;
+  min-width: 0;
   font-variant-numeric: tabular-nums;
 }
 
-.am-year__steps {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  bottom: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-/* Стрелки вне обхода клавишей: в самом поле год двигают вверх и вниз, лишние остановки только мешали бы. */
 .am-year__step {
-  display: flex;
-  flex: 1 1 0;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 38px;
+  height: var(--am-ctl);
   padding: 0;
   color: var(--am-dim);
   cursor: pointer;
   background: var(--am-fill-1);
-  border: 0;
+  border: 1px solid var(--am-line-soft);
   border-radius: var(--am-r-s);
   transition:
     color var(--am-fast) var(--am-ease),
     background-color var(--am-fast) var(--am-ease);
 }
 
-.am-year__step:hover:not(:disabled) {
+.am-year__step:hover {
   color: var(--am-text);
   background: var(--am-fill-2);
 }
 
-.am-year__step:active:not(:disabled) {
+.am-year__step:active {
   background: var(--am-fill-3);
-}
-
-.am-year__step:disabled {
-  color: var(--am-faint);
-  cursor: default;
-  background: none;
 }
 
 .am-year__arrow {

@@ -6,8 +6,8 @@
 
 **Плеер, русские названия и списки AniList на приставке. Без рекламы, телеметрии и своих серверов.**
 
-[![Версия](https://img.shields.io/badge/%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F-3.0.0-02A9FF?style=flat-square&labelColor=0B1622)](https://github.com/foulnike/Animori-TV/releases/latest)
-[![Загрузка](https://img.shields.io/badge/APK-3.0.0-02A9FF?style=flat-square&labelColor=0B1622)](https://github.com/foulnike/Animori-TV/releases/latest)
+[![Версия](https://img.shields.io/badge/%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F-3.0.1-02A9FF?style=flat-square&labelColor=0B1622)](https://github.com/foulnike/Animori-TV/releases/latest)
+[![Загрузка](https://img.shields.io/badge/APK-3.0.1-02A9FF?style=flat-square&labelColor=0B1622)](https://github.com/foulnike/Animori-TV/releases/latest)
 [![Лицензия](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-MIT-02A9FF?style=flat-square&labelColor=0B1622)](LICENSE)
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
@@ -31,7 +31,7 @@
 
 > [!NOTE]
 > У проекта три продукта. Этот репозиторий — приставка. Десктоп —
-> `foulnike/AniMori-AniList-Toolkit`, юзерскрипт — `foulnike/Animori-Script`.
+> `foulnike/Animori-Desktop`, юзерскрипт — `foulnike/Animori-Script`.
 
 ## Как выглядит
 
@@ -49,7 +49,7 @@
 ## Установка
 
 Файл — на [странице выпусков](https://github.com/foulnike/Animori-TV/releases/latest):
-`AniMori_3.0.0_armv7.apk` для 32-разрядных приставок, `AniMori_3.0.0_arm64.apk`
+`AniMori_3.0.1_armv7.apk` для 32-разрядных приставок, `AniMori_3.0.1_arm64.apk`
 для 64-разрядных. Разрядность — `adb shell getprop ro.product.cpu.abi`.
 
 Ставится как обычное приложение: с флешки проводником или командой

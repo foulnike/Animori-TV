@@ -249,8 +249,26 @@ function nextZone(root: ParentNode, from: number, step: number): Zone | null {
   return null
 }
 
+/** Кнопки краёв списка: только у серий и только пока список раскрыт. */
+function jumpsOf(root: ParentNode): HTMLElement[] {
+  const box = root.querySelector<HTMLElement>('[data-zone="jump"]')
+  if (box === null) return []
+
+  return Array.from(box.querySelectorAll<HTMLElement>(ITEMS)).filter(seen)
+}
+
+function landJump(jumps: HTMLElement[], index: number): void {
+  const at = Math.min(jumps.length - 1, Math.max(0, index))
+  const jump = jumps[at]
+  if (jump === undefined) return
+
+  marks.set('jump', at)
+  jump.focus()
+}
+
 /** Держит фокус внутри открытого меню: список лежит над своей кнопкой и в обход рядов не входит,
- *  поэтому шаг вверх уводил на полосу времени. Пока меню открыто, стрелки ходят только по его строкам. */
+ *  поэтому шаг вверх уводил на полосу времени. Пока меню открыто, стрелки ходят только по его строкам.
+ *  У серий есть ещё кнопки краёв справа: вправо со строки — на них, влево с них — назад в список. */
 function holdMenu(root: ParentNode, here: HTMLElement | null, intent: PlayerIntent): boolean {
   const box = root.querySelector<HTMLElement>('[data-zone="menu"]')
   if (box === null) return false
@@ -258,7 +276,38 @@ function holdMenu(root: ParentNode, here: HTMLElement | null, intent: PlayerInte
   const rows = Array.from(box.querySelectorAll<HTMLElement>(ITEMS)).filter(seen)
   if (rows.length === 0) return false
 
+  const jumps = jumpsOf(root)
+
+  if (here !== null && jumps.indexOf(here) >= 0) {
+    const at = jumps.indexOf(here)
+    const walk = intent === 'focusUp' ? -1 : intent === 'focusDown' ? 1 : 0
+
+    if (walk !== 0) {
+      landJump(jumps, at + walk)
+      return true
+    }
+
+    // Назад в список — на ту строку, с которой уходили, а не на выбранную: прыжок к краю
+    // не отменяет то место, где человек листал.
+    if (intent === 'focusLeft') {
+      const back = marks.get('menu') ?? -1
+      const on = rows.findIndex((row) => row.classList.contains('am-play__opt--on'))
+      const want = back >= 0 ? back : Math.max(0, on)
+      const row = rows[Math.min(rows.length - 1, want)]
+      if (row !== undefined) row.focus()
+    }
+
+    return true
+  }
+
   const at = here === null ? -1 : rows.indexOf(here)
+
+  if (jumps.length > 0 && intent === 'focusRight' && at >= 0) {
+    marks.set('menu', at)
+    landJump(jumps, marks.get('jump') ?? 0)
+    return true
+  }
+
   const walk = intent === 'focusUp' || intent === 'focusLeft' ? -1 : 1
 
   // Стоим не в меню — встаём на выбранную строку, а не на первую: выбор человек уже сделал.

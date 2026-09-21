@@ -3,7 +3,7 @@
 // докидываются фоном из person-title.ts, названия работ — из media-title.ts.
 // Сэйю открывается в том же окне со стеком назад. Человека может подменить слой
 // окошка (app/person-layer.ts), поэтому загрузка висит и на смене свойства.
-import { onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue'
 
 import {
   fetchCharacterCard,
@@ -38,11 +38,14 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 /** Телевизор: окно собирается теснее и шире, чтобы влезало в кадр. */
 const lite = isWeakPlatform()
 
-/** Длина описания, после которой оно складывается под кнопку. */
-const DESC_LIMIT = 600
-
 /** По скольку работ спрашиваем названия за раз: полка редко длиннее пачки. */
 const WORK_CHUNK = 10
+
+/** Раздел карточки. На телевизоре каждому нужна вся площадь окна, поэтому разделы не стоят
+ *  друг под другом, а меняют друг друга. */
+type Tab = 'desc' | 'works' | 'voices'
+
+const TAB_WORDS: Record<Tab, string> = { desc: 'Описание', works: 'Работы', voices: 'Голоса' }
 
 type VoiceActor = NonNullable<CharacterCard['media']>['edges'][number]['voiceActors'][number]
 
@@ -58,7 +61,9 @@ const depth = ref(0)
 const charCard = ref<CharacterCard | null>(null)
 const staffCard = ref<StaffCard | null>(null)
 const busy = ref(true)
-const expanded = ref(false)
+
+/** Выбранный раздел. Его может не оказаться у этого человека — тогда показывается первый наличный. */
+const tab = ref<Tab>('desc')
 
 /** Карточка не доехала: сервер не ответил ни на повтор. Прежде это выглядело как
  * «карточки нет», и помочь могла только перезагрузка окна. */
@@ -110,11 +115,22 @@ function rawDesc(): string {
   )
 }
 
-/** Длинное ли описание. Резать текст больше нельзя: в нём разметка, и рез по
- * символам попадал в середину тега. Длина — только признак «сложить по высоте». */
-function longDesc(): boolean {
-  return rawDesc().length > DESC_LIMIT
-}
+/** Разделы, которые есть у этого человека. Данные приезжают не разом: русское описание
+ *  приходит позже карточки, работы — своим доходом. */
+const tabs = computed<Tab[]>(() => {
+  const out: Tab[] = []
+  if (rawDesc() !== '') out.push('desc')
+  if (current.value.kind === 'staff' && shownWorks().length > 0) out.push('works')
+  if (current.value.kind === 'character' && voiceActors().length > 0) out.push('voices')
+  return out
+})
+
+/** Показанный раздел: выбранный, а нет его у этого человека — первый наличный. Так раздел
+ *  не пустует в те такты, когда выбранное ещё не доехало или уже не про этого человека. */
+const shownTab = computed<Tab>(() => {
+  const all = tabs.value
+  return all.indexOf(tab.value) >= 0 ? tab.value : (all[0] ?? 'desc')
+})
 
 /** Видимые работы: отбор 18+ живёт на слое показа, а не в запросе. */
 function shownWorks(): readonly StaffWork[] {
@@ -294,7 +310,7 @@ async function load(target: PersonTarget): Promise<void> {
   works.value = []
   ruWorks.clear()
   ruVoices.clear()
-  expanded.value = false
+  tab.value = 'desc'
   busy.value = true
   cardFailed.value = false
   ruFailed.value = false
@@ -502,6 +518,22 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
+<!-- Ряд разделов. Одному разделу делить площадь не с кем, и ряд не показывается вовсе. -->
+      <div v-if="!busy && tabs.length > 1" class="am-ps-tabs" role="tablist">
+        <button
+          v-for="one in tabs"
+          :key="one"
+          class="am-ps-tab"
+          :class="{ 'am-ps-tab--on': shownTab === one }"
+          type="button"
+          role="tab"
+          :aria-selected="shownTab === one"
+          @click="tab = one"
+        >
+          {{ TAB_WORDS[one] }}
+        </button>
+      </div>
+
       <div ref="box" class="am-sheet__body">
         <template v-if="busy">
           <span class="am-skeleton am-ps-skel" />
@@ -524,10 +556,15 @@ onBeforeUnmount(() => {
             <button class="am-btn am-btn--ghost" type="button" @click="retry">Повторить</button>
           </div>
 
+<!-- Описание — плита со своей прокруткой и сама фокусируемая: иначе за текст не зацепиться и
+     листать его нечем. Вниз и вверх её крутит dpad по метке data-am-scroll. -->
           <div
-            v-if="rawDesc()"
+            v-if="shownTab === 'desc' && rawDesc() !== ''"
             class="am-ps-desc"
-            :class="{ 'am-ps-desc--fold': longDesc() && !expanded }"
+            tabindex="0"
+            role="group"
+            aria-label="Описание"
+            data-am-scroll
           >
 <!-- Ссылка на тайтл закрывает окно: иначе карточка откроется за ним. Ссылка на
      другого человека окно не закрывает — оно уже показывает нового. -->
@@ -535,76 +572,62 @@ onBeforeUnmount(() => {
      читающего биографию из карточки в цепочку чужих биографий. -->
             <RichText :text="rawDesc()" plain @inside="emit('close')" />
           </div>
-          <button
-            v-if="longDesc() && !expanded"
-            class="am-btn am-btn--ghost am-ps-wide"
-            type="button"
-            @click="expanded = true"
-          >
-            Показать полностью
-          </button>
 
-          <!-- Работы (только для авторов): полка постеров с переходом внутрь -->
-          <template v-if="current.kind === 'staff' && shownWorks().length">
-            <h4 class="am-ps-sub">Работы</h4>
-            <div class="am-rail am-ps-works">
-              <button
-                v-for="work in shownWorks()"
-                :key="work.mediaId"
-                class="am-ps-work"
-                type="button"
-                @click="openWork(work.mediaId)"
-              >
-                <img
-                  v-if="work.cover"
-                  class="am-ps-work__art"
-                  :src="work.cover"
-                  :alt="workName(work)"
-                  loading="lazy"
-                  decoding="async"
-                />
-                <span v-else class="am-ps-work__art am-ps-work__art--empty" aria-hidden="true">
-                  {{ workName(work).slice(0, 1) }}
-                </span>
-                <span class="am-ps-work__name">{{ workName(work) }}</span>
-                <span v-if="work.year" class="am-ps-work__year">{{ work.year }}</span>
-              </button>
-            </div>
-          </template>
+          <!-- Работы (только для авторов): сетка постеров с переходом внутрь -->
+          <div v-else-if="shownTab === 'works'" class="am-ps-works">
+            <button
+              v-for="work in shownWorks()"
+              :key="work.mediaId"
+              class="am-ps-work"
+              type="button"
+              @click="openWork(work.mediaId)"
+            >
+              <img
+                v-if="work.cover"
+                class="am-ps-work__art"
+                :src="work.cover"
+                :alt="workName(work)"
+                loading="lazy"
+                decoding="async"
+              />
+              <span v-else class="am-ps-work__art am-ps-work__art--empty" aria-hidden="true">
+                {{ workName(work).slice(0, 1) }}
+              </span>
+              <span class="am-ps-work__name">{{ workName(work) }}</span>
+              <span v-if="work.year" class="am-ps-work__year">{{ work.year }}</span>
+            </button>
+          </div>
 
           <!-- Сэйю (только для персонажей): строка кликабельна, окно то же -->
-          <template v-if="current.kind === 'character' && voiceActors().length">
-            <h4 class="am-ps-sub">Голоса</h4>
-            <div class="am-ps-voices">
-              <button
-                v-for="va in voiceActors()"
-                :key="va.id"
-                v-tip="`Карточка: ${vaName(va)}`"
-                class="am-ps-va"
-                type="button"
-                @click="openVoice(va)"
-              >
-                <img
-                  v-if="va.image?.medium || va.image?.large"
-                  class="am-ps-va__art"
-                  :src="(va.image.medium ?? va.image.large)!"
-                  :alt="va.name.full"
-                  loading="lazy"
-                  decoding="async"
-                />
-                <span v-else class="am-ps-va__art am-ps-va__art--empty" aria-hidden="true">
-                  {{ va.name.full.slice(0, 1) }}
-                </span>
-                <span class="am-ps-va__name">{{ vaName(va) }}</span>
+          <div v-else-if="shownTab === 'voices'" class="am-ps-voices">
+            <button
+              v-for="va in voiceActors()"
+              :key="va.id"
+              v-tip="`Карточка: ${vaName(va)}`"
+              class="am-ps-va"
+              type="button"
+              @click="openVoice(va)"
+            >
+              <img
+                v-if="va.image?.medium || va.image?.large"
+                class="am-ps-va__art"
+                :src="(va.image.medium ?? va.image.large)!"
+                :alt="va.name.full"
+                loading="lazy"
+                decoding="async"
+              />
+              <span v-else class="am-ps-va__art am-ps-va__art--empty" aria-hidden="true">
+                {{ va.name.full.slice(0, 1) }}
+              </span>
+              <span class="am-ps-va__name">{{ vaName(va) }}</span>
 <!-- Стрелка нарисована, а не набрана знаком → из шрифта: глиф шёл тоньше остального интерфейса. -->
-                <span class="am-ps-va__go" aria-hidden="true">
-                  <svg class="am-ps-va__chev" viewBox="0 0 16 16">
-                    <path d="M6.1 3.3 10.8 8l-4.7 4.7" />
-                  </svg>
-                </span>
-              </button>
-            </div>
-          </template>
+              <span class="am-ps-va__go" aria-hidden="true">
+                <svg class="am-ps-va__chev" viewBox="0 0 16 16">
+                  <path d="M6.1 3.3 10.8 8l-4.7 4.7" />
+                </svg>
+              </span>
+            </button>
+          </div>
         </template>
       </div>
     </div>
@@ -625,10 +648,11 @@ onBeforeUnmount(() => {
   animation: am-veil-in var(--am-mid) var(--am-ease-soft) both;
 }
 
-/* Два этажа: шапка и прокручиваемое тело. Подвал убран — его единственная кнопка уводила на AniList. */
+/* Три этажа: шапка, ряд разделов и прокручиваемое тело. Подвал убран — его единственная кнопка
+   уводила на AniList. Ряд разделов пустой этаж не занимает: строки сетки без содержимого схлопываются. */
 .am-sheet__box {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 16px;
   width: 100%;
   max-width: 820px;
@@ -847,9 +871,51 @@ onBeforeUnmount(() => {
 }
 
 /* Описание лежит на своей подложке: стена текста без границ не читалась. Разметку держит RichText. */
+/* Ряд разделов: описание, работы и голоса меняют друг друга, а не стоят столбиком — в столбик
+   длинное описание отжимало полку работ за край окна. */
+.am-ps-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.am-ps-tab {
+  height: var(--am-ctl);
+  padding: 0 15px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--am-dim);
+  cursor: pointer;
+  background: var(--am-fill-1);
+  border: 1px solid var(--am-line-soft);
+  border-radius: var(--am-r-cap);
+  transition:
+    color var(--am-fast) var(--am-ease),
+    background-color var(--am-fast) var(--am-ease),
+    border-color var(--am-fast) var(--am-ease);
+}
+
+.am-ps-tab:hover {
+  color: var(--am-text);
+  background: var(--am-fill-2);
+}
+
+.am-ps-tab--on {
+  color: var(--am-text);
+  background: rgb(var(--am-accent-rgb) / 0.16);
+  border-color: rgb(var(--am-accent-rgb) / 0.55);
+}
+
+/* Описание — плита со своей прокруткой и сама цель для пульта: текст, не влезающий в кадр,
+   должен листаться, а листать нечем, если за него нельзя зацепиться. Предел по высоте тела:
+   короткое описание не растягивается в пустую простыню. */
 .am-ps-desc {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 100%;
   margin: 0;
   padding: 14px 16px;
+  overflow-y: auto;
   font-size: 14px;
   line-height: 1.65;
   color: var(--am-dim);
@@ -858,53 +924,20 @@ onBeforeUnmount(() => {
   border-radius: var(--am-r-l);
 }
 
-/* Длинное описание складывается по высоте, а не режется по символам: рез размеченного
-   текста ломал теги. Хвост гаснет маской — видно, что текст продолжается. */
-.am-ps-desc--fold {
-  max-height: 230px;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(180deg, #000 68%, transparent);
-  mask-image: linear-gradient(180deg, #000 68%, transparent);
-}
-
-.am-ps-wide {
-  align-self: flex-start;
-}
-
-.am-ps-sub {
-  display: flex;
-  gap: 9px;
-  align-items: center;
-  margin: 6px 0 0;
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  color: var(--am-faint);
-  text-transform: uppercase;
-}
-
-.am-ps-sub::before {
-  flex: 0 0 auto;
-  width: 3px;
-  height: 12px;
-  content: '';
-  background: linear-gradient(180deg, var(--am-accent), var(--am-accent-2));
-  border-radius: var(--am-r-cap);
-}
-
-/* Полка работ автора: горизонтальная прокрутка от общего .am-rail, а шаг колонки
-   свой — общая полка размечена колонками в --am-tile, а постер работы вдвое уже. */
+/* Работы сеткой, а не рельсой: в окне рельса обрезалась по правому краю, и листать её
+   приходилось отдельной прокруткой внутри прокручиваемого тела. Сеткой пульт ходит по
+   рядам, а лишние ряды доводятся фокусом. */
+/* Отступ сверху — под отклик постера: он берёт два пикселя вверх, а тело окна обрезает
+   прокручиваемое содержимое, и верхний ряд терял эти два пикселя. */
 .am-ps-works {
-  --am-ps-art: 104px;
-
-  grid-auto-columns: var(--am-ps-art);
-  gap: 12px;
-  padding-bottom: 4px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 14px 10px;
+  padding: 6px 4px 4px;
 }
 
 .am-ps-work {
   display: flex;
-  flex: 0 0 auto;
   flex-direction: column;
   gap: 6px;
   width: 100%;
@@ -941,6 +974,18 @@ onBeforeUnmount(() => {
 .am-ps-work:focus-visible .am-ps-work__art {
   border-color: rgb(var(--am-accent-rgb) / 0.55);
   transform: translateY(-2px);
+}
+
+/* Кромку рисует постер, а не кнопка: кнопка — столбец «постер, имя, год», и общая обводка
+   шла прямоугольником и вокруг подписи. По проекту кромку рисует тот, кто рисует форму. */
+.am-lite .am-ps-work:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.am-lite .am-ps-work:focus-visible .am-ps-work__art {
+  outline: 2px solid rgb(var(--am-accent-rgb) / 0.9);
+  outline-offset: -2px;
 }
 
 /* Имя в две строки: одной не хватало почти ни одному тайтлу, а третья ломала ровный ряд постеров. */
@@ -1104,10 +1149,6 @@ onBeforeUnmount(() => {
     display: none;
   }
 
-/* На узком окне постер работы мельче: четырёх колонок по 104 в тело окна не влезало. */
-  .am-ps-works {
-    --am-ps-art: 92px;
-  }
 }
 
 /* ТЕЛЕВИЗОР У пульта нет ни креста в углу, ни Escape, а стрелки из окна уводили фокус
@@ -1140,10 +1181,21 @@ onBeforeUnmount(() => {
   font-size: 18px;
 }
 
-.am-sheet--tv .am-ps-works {
-  --am-ps-art: 84px;
+/* Раздел — главный переключатель окна, и обычной высоты кнопки для него мало: цель ловится с трёх метров. */
+.am-sheet--tv .am-ps-tab {
+  height: 44px;
+  padding: 0 20px;
+  font-size: 14px;
+}
 
-  gap: 8px;
+/* Постер в сетке крупнее: с трёх метров 96 пикселей мелковаты. */
+.am-sheet--tv .am-ps-works {
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 16px 12px;
+}
+
+.am-sheet--tv .am-ps-desc {
+  font-size: 15px;
 }
 
 /* Крест закрытия на телевизоре — главный выход из окна, и 44 пикселя для него мало: цель ловится с трёх метров. */

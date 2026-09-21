@@ -689,6 +689,11 @@ onBeforeUnmount(() => {
   height: 0;
 }
 
+/* Маска срезала первый чип по левому краю. Пульт ведёт ленту за фокусом, подсказка не нужна. */
+.am-lite .am-lists__tabs {
+  mask-image: none;
+}
+
 .am-lists__tabs .am-chip {
   flex: 0 0 auto;
 }
