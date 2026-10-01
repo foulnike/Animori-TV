@@ -214,7 +214,14 @@ jobs:
           import pathlib
 
           lines = pathlib.Path('CHANGELOG.md').read_text(encoding='utf-8').splitlines()
-          marks = [i for i, line in enumerate(lines) if line.startswith('## [')]
+
+          # Заголовок раздела — «## [версия]». Редактор умеет экранировать скобку
+          # («## \[3.0.2]»), и такой заголовок разделом тоже считаем: выпуск не должен
+          # падать из-за одной кавычки в заголовке.
+          def is_section(line):
+              return line.startswith('## ') and line.replace('\\', '').lstrip('#').strip().startswith('[')
+
+          marks = [i for i, line in enumerate(lines) if is_section(line)]
           if not marks:
               raise SystemExit('В CHANGELOG.md не найдено ни одного раздела вида "## [версия]"')
 
