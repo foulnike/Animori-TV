@@ -46,12 +46,13 @@ jobs:
 
     steps:
       - name: Исходный код
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          # Node 20 вне поддержки с апреля 2026: в релиз собираем на 22.
+          node-version: 22
           cache: npm
 
       # Номер версии из имени тега и сверка с package.json. Номер берётся образцом,
@@ -89,7 +90,7 @@ jobs:
       # Java 17: его требует Android Gradle Plugin 8.x. Более новый не нужен,
       # а более старый Gradle 8.14 не примет вовсе.
       - name: Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: 17
           distribution: temurin
@@ -192,7 +193,7 @@ jobs:
 
     steps:
       - name: Исходный код
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Номер версии из тега
         id: ver
