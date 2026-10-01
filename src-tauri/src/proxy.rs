@@ -56,8 +56,12 @@ pub enum ProxyOutcome {
 #[serde(rename_all = "camelCase")]
 pub enum ProxyAuth {
     None,
+    // Три состояния собираются только на Windows, где живёт окно авторизации.
+    #[cfg_attr(not(windows), allow(dead_code))]
     Pending,
+    #[cfg_attr(not(windows), allow(dead_code))]
     Accepted,
+    #[cfg_attr(not(windows), allow(dead_code))]
     Rejected,
 }
 
@@ -429,6 +433,8 @@ pub fn animori_proxy_status(state: State<'_, ProxyState>) -> ProxyStatus {
 
 /// Учётные данные для обработчика авторизации окна. None — подставлять нечего:
 /// прокси выключен, задан негодно, молчит или логина у него нет.
+// Обработчика нет за пределами Windows, там эта функция никем не зовётся.
+#[cfg(windows)]
 pub fn window_auth(app: &AppHandle) -> Option<WindowAuth> {
     let state = app.try_state::<ProxyCredentials>()?;
     let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());

@@ -7,7 +7,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, Url};
+// Окно входа открывается только на десктопе, там же нужны и его конструктор
+// с адресом внешней страницы.
+#[cfg(desktop)]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_store::StoreExt;
 
 /// Порт приёмника. Постоянный, а не свободный из системы: этот же номер записан

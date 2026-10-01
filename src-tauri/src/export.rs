@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use tauri::{AppHandle, WebviewWindow};
+// Выбор папки спрашивает только десктоп, на приставке свой файловый менеджер.
+#[cfg(desktop)]
 use tauri_plugin_dialog::DialogExt;
 
 /// Потолок записи в байтах. Тот же, что у files.rs: выгрузка списка на десять
