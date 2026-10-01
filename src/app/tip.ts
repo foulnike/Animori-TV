@@ -1,12 +1,5 @@
-// Свои всплывающие подписи вместо системного title.
-//
-// Плашка одна на всё окно и живёт в body. Иначе никак: подписанные метки
-// стоят поверх постера с overflow: hidden, и подсказка псевдоэлементом
-// обрезалась бы самой плиткой. Стиль лежит в styles/tip.css.
-//
-// Почему не системный title: он всплывает с секундной задержкой, рисуется
-// шрифтом системы, не знает ни темы, ни скруглений и в настольном окне
-// выглядит по-разному на каждой платформе.
+// Свои всплывающие подписи вместо системного title: тот всплывает с секундной задержкой, рисуется
+// шрифтом системы и не знает ни темы, ни скруглений. Плашка одна на всё окно и живёт в body.
 
 import type { Directive } from 'vue'
 
@@ -19,10 +12,8 @@ const AIM_GAP = 9
 /** Отступ от краёв окна: подпись у крайней плитки не липнет к границе. */
 const EDGE_PAD = 10
 
-/**
- * Подписи по узлам. Слабые ссылки: снятая с экрана плитка уводит свою
- * запись сама, а в сетке на тысячу строк таких узлов много.
- */
+/** Подписи по узлам. Слабые ссылки: снятая с экрана плитка уводит запись сама,
+ *  а в сетке на тысячу строк таких узлов много. */
 const words = new WeakMap<Element, string>()
 
 let plate: HTMLElement | null = null
@@ -32,6 +23,18 @@ let shownFor: Element | null = null
 
 let timer = 0
 let watching = false
+
+/** Когда указатель последний раз двигался; до первого движения — «никогда». */
+let lastMove = -1
+
+/** Как долго движение указателя считается свежим. Настоящее наведение приходит вместе
+ *  с движением, а показ без движения — наводка припаркованного указателя: браузер
+ *  выбрасывает её сам, когда под ним меняется разметка, и плашка висела бы над элементом,
+ *  которого курсор не касался. */
+const MOVE_GRACE_MS = 400
+
+// Слушатель один на всё окно и ставится при загрузке: он нужен до первого наведения.
+window.addEventListener('pointermove', () => (lastMove = Date.now()), { passive: true })
 
 /** Плашка показа: создаётся перед первой подписью и дальше живёт в body. */
 function plateNode(): HTMLElement {
@@ -52,10 +55,8 @@ function textOf(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-/**
- * Ставит плашку у цели: под ней, а когда снизу тесно — над ней.
- * Считается по уже поставленному тексту: до него размер плашки чужой.
- */
+/** Ставит плашку у цели: под ней, а когда снизу тесно — над ней. Размер считается
+ *  по уже поставленному тексту: до него размер плашки чужой. */
 function place(aim: Element): void {
   const node = plateNode()
   const box = aim.getBoundingClientRect()
@@ -104,11 +105,8 @@ function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') hide()
 }
 
-/**
- * Прокрутка и смена размера уводят цель из-под плашки, и подпись осталась
- * бы висеть над чужим местом. Слушатели ставятся один раз на всё окно:
- * подписанных узлов сотни, а плашка одна.
- */
+/** Прокрутка и смена размера уводят цель из-под плашки. Слушатели ставятся один
+ *  раз на всё окно: подписанных узлов сотни, а плашка одна. */
 function watchWindow(): void {
   if (watching) return
   watching = true
@@ -123,6 +121,12 @@ function onEnter(e: Event): void {
   const aim = e.currentTarget
   if (!(aim instanceof Element)) return
 
+  // Наводка без свежего движения указателя — призрак: пульт сюда не ходил, и подпись
+  // не должна показываться. Фокус и прикосновение не проверяются: они наводкой не бывают.
+  if (e instanceof PointerEvent && e.pointerType !== 'touch' && Date.now() - lastMove > MOVE_GRACE_MS) {
+    return
+  }
+
   window.clearTimeout(timer)
   timer = window.setTimeout(() => show(aim), SHOW_DELAY_MS)
 }
@@ -132,10 +136,8 @@ function onLeave(): void {
   hide()
 }
 
-/**
- * Подпись к любому узлу: v-tip="'Повторных проходов: 3'".
- * Пустая строка и null значат «подписи нет»: условие в разметке не нужно.
- */
+/** Подпись к любому узлу: v-tip="'Повторных проходов: 3'". Пустая строка и null
+ *  значат «подписи нет» — условие в разметке не нужно. */
 export const tip: Directive<HTMLElement, string | null | undefined> = {
   mounted(el, binding) {
     words.set(el, textOf(binding.value))
@@ -168,4 +170,12 @@ export const tip: Directive<HTMLElement, string | null | undefined> = {
     el.removeEventListener('focus', onEnter)
     el.removeEventListener('blur', onLeave)
   },
+}
+
+/** Снимает чужую подпись: пульт увёл фокус, а висит плашка от припаркованного указателя.
+ *  Свою подпись не трогаем — её уберёт blur, когда фокус действительно уйдёт. */
+export function hideStaleTip(): void {
+  const hot = document.activeElement
+  if (shownFor !== null && hot instanceof Element && hot.contains(shownFor)) return
+  hide()
 }

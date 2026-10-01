@@ -1,6 +1,5 @@
 // Пользовательские настройки: читать `settings.x` в момент использования, не копировать.
-// До `await loadSettings()` здесь дефолты, а импорты выполняются до start() в app/main.ts.
-// Логгер недоступен: utils/logger сам читает этот модуль, импорт дал бы цикл.
+// До `await loadSettings()` здесь дефолты. Логгер недоступен: utils/logger сам читает этот модуль.
 
 import { Bridge } from '@/bridge'
 
@@ -9,16 +8,14 @@ export type AccentPreset =
   'site' | 'sakura' | 'mono' | 'catppuccin' | 'nord' | 'dracula' | 'matcha' | 'sunset' | 'custom'
 
 /**
- * Оформление окна: слово «тема» занято музыкальными темами (`enableThemes`).
- * `amoled` — не «тёмная погуще»: чёрный ноль не светится на OLED,
- * а полутон панелей выдал бы серую рамку.
+ * Оформление окна: слово «тема» занято музыкальными темами (`enableThemes`). `amoled` — не
+ * «тёмная погуще»: чёрный ноль не светится на OLED, а полутон панелей выдал бы серую рамку.
  */
 export type AppearanceName = 'dark' | 'light' | 'amoled'
 
 /**
  * Где живёт облачная копия списка; 'none' — нигде, и наружу не уходит ни один запрос.
- * 'google' оставлен нарочно: у выбравших его значение уже лежит в хранилище, и панель
- * говорит человеку, что место пора переставить.
+ * 'google' оставлен нарочно: у выбравших его значение уже лежит в хранилище.
  */
 export type CloudPlace = 'none' | 'yandex' | 'google'
 
@@ -47,9 +44,8 @@ export interface AniMoriSettings {
   accentCustom: string
   appearance: AppearanceName
   /**
-   * Блокировать всплывающие окна плеера. Работает только перехват on_new_window в Tauri,
-   * и он ловит НОВЫЕ окна: редиректы фрейма и оверлеи не отсекаются. Дефолт общий
-   * с hideAds — один тумблер панели пишет оба ключа.
+   * Блокировать всплывающие окна плеера. Работает только перехват on_new_window в Tauri, и он
+   * ловит НОВЫЕ окна: редиректы фрейма и оверлеи не отсекаются. Дефолт общий с hideAds.
    */
   blockPlayerPopups: boolean
   /**
@@ -70,8 +66,7 @@ export interface AniMoriSettings {
   exportDir: string
   /**
    * Ник на Шикимори, с которого переносился список; пустая строка — «ни разу не переносили».
-   * Хранится, чтобы не набирать ник заново, особенно пультом на телевизоре. Входа не требует:
-   * открытый профиль читается без него.
+   * Входа не требует: открытый профиль читается без него.
    */
   shikiNick: string
   /**
@@ -90,10 +85,7 @@ export interface AniMoriSettings {
   cloudSavedCount: number
   /**
    * Время правки файла копии, каким его назвало облако; пустая строка — «мы его не писали».
-   * Ключ отвечает на один вопрос перед сохранением: наша ли копия лежит в облаке сейчас.
-   *
-   * Сравнивать со своим cloudSavedAt нельзя — часы разные. Метка принадлежит ТЕКУЩЕМУ
-   * пропуску: очищать её обязан тот, кто меняет место или пропуск.
+   * С cloudSavedAt не сравнивать: часы разные. Метку обязан очищать меняющий пропуск.
    */
   cloudSeenModified: string
   /** Производная: тайтлы включены, пока основной источник != 'off'. */
@@ -123,7 +115,7 @@ const DEFAULT_SETTINGS: AniMoriSettings = {
   enableLogger: true,
   accentPreset: 'site',
   accentCustom: '',
-  appearance: 'dark',
+  appearance: 'amoled',
   blockPlayerPopups: false,
   hideAds: false,
   showAdult: false,
@@ -212,9 +204,8 @@ async function readSettings(): Promise<AniMoriSettings> {
     storage.get('am_cloud_seen_modified', DEFAULT_SETTINGS.cloudSeenModified),
   ])
 
-  // Совместимость: старый set_titles применяется только при отсутствии нового ключа.
-  // Литерал 'shikimori' здесь писать НЕЛЬЗЯ: старый ключ есть почти у всех,
-  // и новый дефолт стал бы недостижим.
+  // Совместимость: старый set_titles применяется только при отсутствии нового ключа. Литерал
+  // 'shikimori' здесь писать НЕЛЬЗЯ: старый ключ есть почти у всех, и дефолт стал бы недостижим.
   const titlePrimary = storedTitlePrimary ?? (legacyTitles ? DEFAULT_SETTINGS.titlePrimary : 'off')
 
   return {
@@ -272,10 +263,8 @@ export async function loadSettings(): Promise<AniMoriSettings> {
 }
 
 /**
- * Записать одну настройку и сразу обновить производные. Память обновляется ДО записи:
- * интерфейс отвечает мгновенно, а сбой записи не откатывает выбор.
- *
- * Сознательно НЕ отклоняется: reject из сеттера модели всплыл бы глобальным unhandledrejection.
+ * Записать одну настройку и сразу обновить производные. Память обновляется ДО записи: сбой
+ * не откатывает выбор. Отказ не отклоняется: reject всплыл бы глобальным unhandledrejection.
  */
 export async function saveSetting<K extends keyof AniMoriSettings>(
   key: K,

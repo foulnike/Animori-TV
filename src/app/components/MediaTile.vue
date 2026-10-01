@@ -248,7 +248,7 @@ const hasTags = computed(
 }
 
 /* Под курсором форма перетекает в «каплю»: движение края заметнее тени. Акцентного ореола под постером нет нарочно — на полке из десятка постеров соседние плитки тонули в чужом свечении. */
-.am-tile:hover .am-tile__art,
+.am-tile:hover:where(:not(.am-lite *)) .am-tile__art,
 .am-tile:has(:focus-visible) .am-tile__art {
   border-color: color-mix(in srgb, var(--am-accent) 55%, transparent);
   border-radius: var(--am-r-drop);
@@ -257,7 +257,7 @@ const hasTags = computed(
 }
 
 /* Пульт: название подсвечивается и по фокусу. Рамка заметна, но постеров в ряду много, и какой именно выбран, читается по подписи под ним. */
-.am-tile:hover .am-tile__name,
+.am-tile:hover:where(:not(.am-lite *)) .am-tile__name,
 .am-tile:has(:focus-visible) .am-tile__name {
   color: var(--am-accent);
 }
@@ -307,7 +307,7 @@ const hasTags = computed(
   pointer-events: none;
 }
 
-.am-tile:hover .am-tile__sheen {
+.am-tile:hover:where(:not(.am-lite *)) .am-tile__sheen {
   transform: translateX(130%);
 }
 
@@ -326,7 +326,7 @@ const hasTags = computed(
 
 /* Крестик витрины занимает тот же левый угол, что метки, поэтому на время наведения метки уступают ему место.
    Уходят они влево, а не вверх: так это читается «метки посторонились», а не «метки улетели». */
-.am-tile--hidable:hover .am-tile__tags,
+.am-tile--hidable:hover:where(:not(.am-lite *)) .am-tile__tags,
 .am-tile--hidable:has(:focus-visible) .am-tile__tags {
   opacity: 0;
   transform: translateX(-6px);
@@ -372,7 +372,7 @@ const hasTags = computed(
     border-radius var(--am-mid) var(--am-ease);
 }
 
-.am-tile:hover .am-tile__tag--sign {
+.am-tile:hover:where(:not(.am-lite *)) .am-tile__tag--sign {
   color: var(--am-on-art);
   border-color: color-mix(in srgb, var(--am-on-art) 26%, transparent);
   border-radius: var(--am-r-drop);
@@ -435,9 +435,9 @@ const hasTags = computed(
 }
 
 /* Правка стоит в том же правом углу, что оценка каталога и точка идущего сезона, и на время наведения те уступают ей место — зеркально меткам слева. */
-.am-tile--edit:hover .am-tile__score,
+.am-tile--edit:hover:where(:not(.am-lite *)) .am-tile__score,
 .am-tile--edit:has(:focus-visible) .am-tile__score,
-.am-tile--edit:hover .am-tile__live,
+.am-tile--edit:hover:where(:not(.am-lite *)) .am-tile__live,
 .am-tile--edit:has(:focus-visible) .am-tile__live {
   opacity: 0;
   transform: translateX(6px);
@@ -463,9 +463,8 @@ const hasTags = computed(
   right: 28px;
 }
 
-/* Метка доступности: маленький Play в правом нижнем углу. Слов нет: треугольник понятен без подписи,
-   а пилюля «Есть видео» отнимала бы половину верхнего ряда у меток о самом аниме. Оправы нет нарочно —
-   знак держится на тени, как соседний счёт частей. Отклик ушёл в наведение: ореол акцентом, а не цветом знака. */
+/* Метка доступности: маленький Play в правом нижнем углу. Слов нет: треугольник
+   понятен без подписи, а пилюля отняла бы половину верхнего ряда у меток о самом аниме. */
 .am-tile__play {
   --am-play-shade: drop-shadow(0 1px 3px var(--am-veil));
 
@@ -496,7 +495,7 @@ const hasTags = computed(
   transform: translateX(0.5px);
 }
 
-.am-tile:hover .am-tile__play,
+.am-tile:hover:where(:not(.am-lite *)) .am-tile__play,
 .am-tile:has(:focus-visible) .am-tile__play {
   color: var(--am-on-art);
   filter: var(--am-play-shade) drop-shadow(0 0 7px rgb(var(--am-accent-rgb) / 0.55));
@@ -509,7 +508,7 @@ const hasTags = computed(
   color: color-mix(in srgb, var(--am-on-art) 40%, transparent);
 }
 
-.am-tile:hover .am-tile__play--none,
+.am-tile:hover:where(:not(.am-lite *)) .am-tile__play--none,
 .am-tile:has(:focus-visible) .am-tile__play--none {
   color: color-mix(in srgb, var(--am-on-art) 62%, transparent);
   filter: var(--am-play-shade);
@@ -565,11 +564,8 @@ const hasTags = computed(
   white-space: nowrap;
 }
 
-/* Крестик «не интересует»: виден под курсором и фокусом, а не всегда. Сидит слева — в правом углу он
-   закрывал оценку каталога и точку идущего сезона. Показ идёт прозрачностью, а не display: с none на
-   inline-flex браузер успевал показать символ по базовой линии. Появляется ростом из самого угла.
-   Формы у кнопки нет: круг и цветок рисует вложенный SakuraBloom (border-radius вогнутых впадин не умеет,
-   clip-path обрезал бы попадание курсора и кольцо фокуса). border-radius оставлен — по нему идёт обводка :focus-visible. */
+/* Крестик «не интересует»: виден под курсором и фокусом, сидит слева — справа закрывал оценку.
+   Показ прозрачностью, а не `display`: с `none` браузер показывал символ по базовой линии. */
 .am-tile__hide {
   --am-bloom-deep: var(--am-art-deep);
   --am-bloom-petal: color-mix(in srgb, var(--am-sakura) 34%, var(--am-art-deep));
@@ -610,7 +606,7 @@ const hasTags = computed(
   content: '';
 }
 
-.am-tile:hover .am-tile__hide,
+.am-tile:hover:where(:not(.am-lite *)) .am-tile__hide,
 .am-tile:has(:focus-visible) .am-tile__hide {
   visibility: visible;
   opacity: 1;
@@ -626,7 +622,7 @@ const hasTags = computed(
   transition: transform var(--am-fast) var(--am-ease);
 }
 
-.am-tile__hide:hover > .am-tile__hide-sign,
+.am-tile__hide:hover:where(:not(.am-lite *)) > .am-tile__hide-sign,
 .am-tile__hide:focus-visible > .am-tile__hide-sign {
   transform: translateY(-1px);
 }
@@ -670,7 +666,7 @@ const hasTags = computed(
   content: '';
 }
 
-.am-tile:hover .am-tile__edit,
+.am-tile:hover:where(:not(.am-lite *)) .am-tile__edit,
 .am-tile:has(:focus-visible) .am-tile__edit {
   visibility: visible;
   opacity: 1;
@@ -691,7 +687,7 @@ const hasTags = computed(
   transition: transform var(--am-fast) var(--am-ease);
 }
 
-.am-tile__edit:hover > .am-tile__edit-sign,
+.am-tile__edit:hover:where(:not(.am-lite *)) > .am-tile__edit-sign,
 .am-tile__edit:focus-visible > .am-tile__edit-sign {
   transform: translateY(-1px);
 }
@@ -708,26 +704,26 @@ const hasTags = computed(
 
 /* Спокойное движение: системная просьба сильнее наших красот. */
 @media (prefers-reduced-motion: reduce) {
-  .am-tile:hover .am-tile__art,
+  .am-tile:hover:where(:not(.am-lite *)) .am-tile__art,
   .am-tile:has(:focus-visible) .am-tile__art,
-  .am-tile:hover .am-tile__play,
+  .am-tile:hover:where(:not(.am-lite *)) .am-tile__play,
   .am-tile:has(:focus-visible) .am-tile__play,
-  .am-tile--hidable:hover .am-tile__tags,
+  .am-tile--hidable:hover:where(:not(.am-lite *)) .am-tile__tags,
   .am-tile--hidable:has(:focus-visible) .am-tile__tags,
-  .am-tile--edit:hover .am-tile__score,
+  .am-tile--edit:hover:where(:not(.am-lite *)) .am-tile__score,
   .am-tile--edit:has(:focus-visible) .am-tile__score,
-  .am-tile--edit:hover .am-tile__live,
+  .am-tile--edit:hover:where(:not(.am-lite *)) .am-tile__live,
   .am-tile--edit:has(:focus-visible) .am-tile__live,
   .am-tile__hide,
-  .am-tile__hide:hover > .am-tile__hide-sign,
+  .am-tile__hide:hover:where(:not(.am-lite *)) > .am-tile__hide-sign,
   .am-tile__hide:focus-visible > .am-tile__hide-sign,
   .am-tile__edit,
-  .am-tile__edit:hover > .am-tile__edit-sign,
+  .am-tile__edit:hover:where(:not(.am-lite *)) > .am-tile__edit-sign,
   .am-tile__edit:focus-visible > .am-tile__edit-sign {
     transform: none;
   }
 
-  .am-tile:hover .am-tile__sheen {
+  .am-tile:hover:where(:not(.am-lite *)) .am-tile__sheen {
     transform: translateX(-130%);
   }
 

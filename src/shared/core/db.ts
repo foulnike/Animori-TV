@@ -17,9 +17,8 @@ let globalDbInstance: IDBDatabase | null = null
 // только после разрешения, а на холодном старте очередь выпускает десятки чтений разом.
 let openInFlight: Promise<IDBDatabase | null> | null = null
 
-// Миграции схемы: ключ — версия, значение — мигратор от N-1 к N. Прогон от oldVersion+1
-// до DB_VERSION; каждый шаг идемпотентен. Новая миграция: поднять DB_VERSION в constants.ts
-// и добавить [N+1]: ... Версии 1..5 консолидированы в шаг 5, далее нумерация с 6.
+// Миграции схемы: ключ — версия, значение — мигратор от N-1 к N, каждый шаг идемпотентен.
+// Новая: поднять DB_VERSION и добавить [N+1]: ... Версии 1..5 консолидированы в шаг 5.
 const DB_MIGRATIONS: Record<number, Migration> = {
   5: (db) => {
     if (!db.objectStoreNames.contains('shikiCache'))
@@ -39,8 +38,8 @@ const DB_MIGRATIONS: Record<number, Migration> = {
     // Старого стора нет — переносить нечего.
     if (!db.objectStoreNames.contains('shikiCache')) return
 
-    // Без транзакции копировать нечем: оставляем старый стор на месте, ничего не теряя.
-    // Псевдоним в dbGet/dbSet смотрит в новый стор, так что склад просто наполнится заново.
+    // Без транзакции копировать нечем: старый стор остаётся на месте. Псевдоним в
+    // dbGet/dbSet смотрит в новый стор, так что склад просто наполнится заново.
     if (!tx) {
       Logger('WARN', 'Миграция БД: нет транзакции обновления, перенос кэша пропущен')
       return
@@ -86,9 +85,8 @@ function physicalStore(store: CacheStoreName): PhysicalStore {
   return store === 'shikiCache' ? 'mediaCache' : store
 }
 
-// Вешает на живое соединение обработчики его смерти. onversionchange — профилактика:
-// blocked в соседней вкладке возникает потому, что мы держим старую версию. onclose —
-// соединение умерло не по нашей воле; без него в globalDbInstance остался бы битый экземпляр.
+// Вешает на живое соединение обработчики его смерти. onversionchange — профилактика из-за
+// старой версии в соседней вкладке; onclose — соединение умерло не по нашей воле.
 function attachConnectionHandlers(db: IDBDatabase): void {
   db.onversionchange = () => {
     Logger('WARN', 'IndexedDB: другое окно обновляет схему — закрываем соединение')
@@ -107,9 +105,8 @@ function attachConnectionHandlers(db: IDBDatabase): void {
   }
 }
 
-// Открывает базу, прогоняя недостающие миграции. Промис разрешается ВСЕГДА и ровно один
-// раз: соединением, null по ошибке или null по таймауту. Работа без кэша — это медленно,
-// но работа; виснувший старт — мёртвое приложение. Потребители умеют обрабатывать null.
+// Открывает базу, прогоняя недостающие миграции. Промис разрешается ВСЕГДА и ровно один раз:
+// соединением, null по ошибке или null по таймауту. Виснущий старт — мёртвое приложение.
 export async function openDB(): Promise<IDBDatabase | null> {
   if (globalDbInstance) return globalDbInstance
 
@@ -199,16 +196,15 @@ export async function openDB(): Promise<IDBDatabase | null> {
 
   const db = await openInFlight
 
-  // Маркер снимается в любом случае: запоминать отказ навсегда нельзя — соседняя
-  // вкладка закроется, и база станет доступной.
+  // Маркер снимается в любом случае: запоминать отказ навсегда нельзя — соседняя вкладка
+  // закроется, и база станет доступной.
   openInFlight = null
 
   return db
 }
 
-// Читает запись по ключу.
-// @param store Имя object store; старое shikiCache равносильно mediaCache.
-// @param key keyPath стора: key (строка) для mediaCache, id (число) для остальных.
+// Читает запись по ключу. Имя object store: старое shikiCache равносильно mediaCache.
+// keyPath стора: key (строка) для mediaCache, id (число) для остальных.
 export async function dbGet<T = unknown>(
   store: CacheStoreName,
   key: IDBValidKey,

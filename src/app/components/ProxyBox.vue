@@ -16,17 +16,23 @@ import {
 } from '@/core/proxy'
 import { proxyRestartNeeded, readProxyConfig, saveProxyField } from '@/core/proxy-settings'
 
+import { restoreFocus } from '../focus-return'
 import { isWeakPlatform } from '../platform'
 
 import PickBox from './PickBox.vue'
 
-/** Виды прокси: список один на панель, порядок строк задан здесь. Свой список, а не `<select>`:
- * тот рисует оболочка, на тёмной теме выпадал белым. Переключатель из двух кнопок не вышел —
- * на узком окне строке 405 px, а он требует 440. */
+/** Виды прокси: список один на панель, порядок строк задан здесь. Свой список, а не
+ *  `<select>`: тот рисует оболочка, на тёмной теме выпадал белым. */
 const KINDS: ReadonlyArray<{ key: ProxyKind; title: string }> = [
   { key: 'http', title: 'HTTP' },
   { key: 'socks5', title: 'SOCKS5' },
 ]
+
+/** Слабая ли площадка — то есть телевизор. По ней строка-тумблер берёт фокус сама,
+ *  а галочка внутри уходит из обхода: у галочки мишень 54×30, а крестик окна стоит
+ *  в правом углу шапки — по горизонтали они не перекрываются, и «вверх» от тумблера
+ *  пропадало, не найдя соседа. Тот же приём, что у тумблера 18+ в настройках. */
+const lite = isWeakPlatform()
 
 /** Значения на случай отсутствия ключа; до первого чтения поля не пустуют. */
 const enabled = ref(DEFAULT_PROXY.enabled)
@@ -157,9 +163,16 @@ function onEnabled(): void {
   void saveProxyField('enabled', enabled.value)
 }
 
-/** Выбор вида: нормализация и запись поля. Значение приходит строкой, как у всякого своего
- * списка, и нормализуется — чужое значение не должно лечь в файл настроек.
- * Повторный выбор того же вида ничего не пишет: прежний `<select>` события не давал. */
+/** Enter на строке-тумблере. Галочка внутри переключается с клавиатуры сама, а метка вокруг
+ *  неё — нет: `<label>` щелчок мышью превращает в нажатие по полю, а Enter и пробел на себе
+ *  не разбирает. Переключаем значение сами и зовём тот же обработчик, что и по клику. */
+function onSwitchKey(): void {
+  enabled.value = !enabled.value
+  onEnabled()
+}
+
+/** Выбор вида: нормализация и запись поля. Значение приходит строкой и нормализуется —
+ *  чужое значение не должно лечь в файл настроек. */
 function pickKind(next: string): void {
   const wanted = normalizeProxyKind(next)
   if (kind.value === wanted) return
@@ -196,12 +209,14 @@ function onRestart(): void {
   void Bridge.shell.restart()
 }
 
-/** Проверка адреса в два шага, и оба нужны. Щуп открывает TCP-соединение («адрес кто-нибудь
- * слушает»), настоящий запрос — «пускают ли через него наружу». Прокси, принимающий соединение
- * и не пускающий дальше, щупом неотличим от рабочего. Расхождение ответов и есть самое ценное. */
+/** Проверка адреса в два шага, и оба нужны. Щуп открывает TCP-соединение («адрес слушает»),
+ *  настоящий запрос — «пускают ли через него наружу». */
 async function check(): Promise<void> {
   if (checking.value) return
 
+  // Держатель запоминается до проверки: кнопка гаснет disabled и отдаёт фокус, а после
+  // проверки обход оставил бы пульт на крестике окна — мимо строки с разбором.
+  const from = document.activeElement
   checking.value = true
   checkText.value = ''
   void loadStatus()
@@ -241,6 +256,7 @@ async function check(): Promise<void> {
     checkText.value = 'Проверка не удалась: ' + describe(e)
   } finally {
     checking.value = false
+    restoreFocus(from)
   }
 }
 
@@ -254,8 +270,23 @@ onMounted(() => {
   <div class="am-panel am-box">
     <h3 class="am-h3">Прокси</h3>
 
-    <label class="am-switch">
-      <input v-model="enabled" type="checkbox" class="am-switch__box" @change="onEnabled" />
+    <!-- Строка-тумблер на телевизоре берёт фокус сама, а галочка внутри из обхода убирается:
+         мишенью с трёх метров служит вся строка, и «вверх» от неё находит крестик окна. -->
+    <label
+      class="am-switch"
+      :tabindex="lite ? 0 : -1"
+      role="switch"
+      :aria-checked="enabled"
+      @keydown.enter.prevent="onSwitchKey"
+      @keydown.space.prevent="onSwitchKey"
+    >
+      <input
+        v-model="enabled"
+        :tabindex="lite ? -1 : 0"
+        type="checkbox"
+        class="am-switch__box"
+        @change="onEnabled"
+      />
       <span class="am-switch__name">Использовать прокси</span>
     </label>
 

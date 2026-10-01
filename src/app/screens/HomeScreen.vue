@@ -1,10 +1,8 @@
 <script setup lang="ts">
-// Главная — витрина рекомендаций (пункт 3.11). Своя полка из памяти коллекции, витрина
-// каталога через core/recs: сети экран не знает. Три полки каталога едут одним запросом
-// (packShelf). Пока отбор пуст — витрина из пяти полок; выбран жанр, тэг, год или формат —
-// каруселей нет, вместо них вертикальная лента с «Показать ещё». Порция ленты — целое число рядов сетки.
+// Главная — витрина рекомендаций (пункт 3.11). Своя полка из памяти коллекции, витрина — через
+// core/recs: сети экран не знает. Пустой отбор — витрина из пяти полок, иначе вертикальная лента.
 
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { emptyPick, pickIsSet, pickKey, type CatalogPick } from '@/api/anilist-catalog'
 import type { MediaBrief } from '@/api/anilist-media'
@@ -37,6 +35,9 @@ import { Logger } from '@/utils/logger'
 import EmptyMark from '../components/EmptyMark.vue'
 import FilterSheet from '../components/FilterSheet.vue'
 import MediaTile from '../components/MediaTile.vue'
+import { gridCols, wholeRows } from '../grid-fit'
+import { splashLine } from '../splash'
+import { SAKURA_ROSETTE, SAKURA_ROSETTE_ASPECT, SAKURA_ROSETTE_BOX } from '../sakura'
 import { formatWord, GENRE_CHOICES, genreWord, partsShort } from '../labels'
 import { navigate } from '../router'
 import SakuraMark from '../components/SakuraMark.vue'
@@ -44,13 +45,53 @@ import { tagWord } from '../tag-words'
 import { toPlayAsk, toTileRow, type TileRow } from '../tile-row'
 import { OWN_STATUSES, useHomeCalendar, type CalendarScope } from './home-calendar'
 import { dropFeed, feedKeep, homePick } from './home-keep'
+import { sprayGrains, type Grain, type KeepOut } from './home-spray'
 
 /** Сколько постеров класть на свою полку. */
 const SHELF_SIZE = 14
 
-/** Области показа календаря: подписи, подсказки и порядок. Второй пункт назван
- * «Популярное», а не «Глобально», нарочно: глобального показа у AniList нет вовсе,
- * и подпись, обещающая это, врала бы при каждом открытии экрана. */
+/** Фраза плашки на этот запуск: реестр живёт в app/splash.ts, инициализируется он оттуда же при старте. */
+const splash = splashLine()
+
+/** Пропорция розетки для `aspect-ratio`: та же, что в sakura.ts, своими пикселями тут не считаем. */
+const ROSE_ASPECT = SAKURA_ROSETTE_ASPECT
+
+const heyPlate = ref<HTMLElement | null>(null)
+const heyText = ref<HTMLElement | null>(null)
+const heyRose = ref<HTMLElement | null>(null)
+const grains = ref<Grain[]>([])
+
+// Россыпь пересчитывается по размеру плашки; прежний размер запоминается, иначе расчёт шёл бы на каждый кадр.
+let heyWide = 0
+let heyHigh = 0
+let sprayEye: ResizeObserver | null = null
+
+function shutOf(node: HTMLElement, box: DOMRect): KeepOut {
+  const own = node.getBoundingClientRect()
+  return { x: own.left - box.left, y: own.top - box.top, w: own.width, h: own.height }
+}
+
+function layoutSpray(): void {
+  const plate = heyPlate.value
+  if (plate === null) return
+
+  const wide = plate.clientWidth
+  const high = plate.clientHeight
+  if (wide <= 0 || high <= 0) return
+  if (wide === heyWide && high === heyHigh) return
+  heyWide = wide
+  heyHigh = high
+
+  const box = plate.getBoundingClientRect()
+  const shut: KeepOut[] = []
+  if (heyText.value !== null) shut.push(shutOf(heyText.value, box))
+  if (heyRose.value !== null) shut.push(shutOf(heyRose.value, box))
+
+  grains.value = sprayGrains(wide, high, shut)
+}
+
+/** Области показа календаря: подписи, подсказки и порядок. Второй пункт назван «Популярное» нарочно:
+ * глобального показа у AniList нет вовсе, и подпись, обещающая это, врала бы при каждом открытии. */
 const CALENDAR_SCOPES: ReadonlyArray<{ key: CalendarScope; title: string; hint: string }> = [
   { key: 'mine', title: 'Моё', hint: 'Всё из списка, кроме брошенного' },
   { key: 'popular', title: 'Популярное', hint: 'Выходы верхушки идущих за эту неделю' },
@@ -66,7 +107,9 @@ const HOLD_COUNT = 7
 /** Ниже этого числа плиток полка не показывается: огрызок из одной-двух картинок после чистки повторов выглядит ошибкой загрузки. */
 const SHELF_MIN = 3
 
-/** Сколько плиток добирать в ленту за одно «Показать ещё»: четыре ряда по девять плиток, иначе нижний ряд обрывался на середине. */
+/** Сколько плиток добирать в ленту за одно «Показать ещё»: четыре ряда по девять плиток — это
+ * десктопная норма, и она только отправная точка. Перед самим запросом число добирается до
+ * целого числа рядов по фактическим колонкам (grid-fit), иначе нижний ряд обрывался на середине. */
 const FEED_WANT = 36
 
 /** Сколько ждать после первого показа, прежде чем спросить: без паузы каждая плитка уходила бы своим вопросом, а очередь ядра любит оптовые пачки. */
@@ -389,9 +432,8 @@ function buildOwn(): void {
   void fillTitles()
   loadOwnMarks()
 
-// Календарю нужны все свои тайтлы, а не четырнадцать на полке: полка обрезана по длине, а
-// неделя — нет. Закладки шире, чем у полки: в него идут и планы, и отложенное, а брошенное
-// не идёт. Разницу держит OWN_STATUSES в home-calendar. Номера запоминаются для смены области.
+// Календарю нужны все свои тайтлы, а не четырнадцать на полке: полка обрезана по длине, а неделя — нет.
+// Разницу в закладках держит OWN_STATUSES в home-calendar.
   calendarIds = selectEntries({ status: [...OWN_STATUSES] }).map((entry) => entry.mediaId)
   void loadCalendar(calendarIds)
 }
@@ -410,10 +452,9 @@ function shelfDefs(): ShelfDef[] {
   ]
 }
 
-/** Собирает полки в показ: приехавшее встаёт на своё место в порядке состава. Аниме
- * показывается ровно на одной полке: «тренд», «лучшее» и жанровые подборки у каталога
- * пересекаются почти наполовину. Взрослое отсеивается здесь, а не только при загрузке полки:
- * состав полок запоминается на сеанс, и отсев иначе остался бы на экране после выключения тумблера. */
+/** Собирает полки в показ: приехавшее встаёт на своё место в порядке состава. Аниме показывается ровно
+ * на одной полке — у каталога они пересекаются почти наполовину. Взрослое отсеивается здесь, а не при
+ * загрузке полки: состав запоминается на сеанс, и отсев иначе остался бы после выключения тумблера. */
 function publish(): void {
   const out: Shelf[] = []
   const seen = new Set<number>()
@@ -442,9 +483,8 @@ const stopPlayWatch = onPlayableChange(() => {
   drawFeed()
 })
 
-/** Вопрос об источниках по номеру показанной плитки. Плитка приходит с трёх сторон, и вопрос
- * у каждой собирается по-своему: у своей полки есть номер MAL из снимка, у каталога — заголовки брифа.
- * Анонс не спрашивается вовсе: у него не вышло ни одной части, и ответ известен заранее. */
+/** Вопрос об источниках по номеру показанной плитки. У своей полки есть номер MAL из снимка, у каталога —
+ * заголовки брифа. Анонс не спрашивается вовсе: у него не вышло ни одной части. */
 function askFor(mediaId: number): PlayAsk | null {
   const own = ownEntries.find((entry) => entry.mediaId === mediaId)
   if (own !== undefined) return playAskOf(own)
@@ -549,9 +589,8 @@ async function warmRecTitles(mine: number, key: string): Promise<void> {
   }
 }
 
-/** Поднимает склад доступности по приехавшей полке витрины: даром и разом. Вопрос чужим
- * службам ставит показ плитки, а не приезд полки: пять полок по четырнадцать постеров — это
- * семь десятков вопросов сразу после запуска, из которых видно от силы полтора ряда. */
+/** Поднимает склад доступности по приехавшей полке витрины: даром и разом. Вопрос чужим службам
+ * ставит показ плитки, а не приезд полки: пять полок — это семь десятков вопросов сразу после запуска. */
 function primeShelfMarks(mine: number, key: string): void {
   const items = staged.get(key)
   if (items === undefined || items.length === 0) return
@@ -637,8 +676,15 @@ async function growFeed(mine: number): Promise<void> {
 
   feedBusy.value = true
 
+  // Лента уже нарисована заглушкой, и только теперь видно, сколько колонок влезло: 36 собрано
+  // под девять колонок («четыре ряда по девять»), а на приставке их пять — и последний ряд
+  // оставался с одной плиткой. До целого числа рядов добираем вверх; если источнику нечего
+  // отдать, `run.done` встанет, и незаконченным останется только последний, оборванный источником.
+  await nextTick()
+  const want = wholeRows(FEED_WANT, gridCols(document.querySelector('.am-grid')))
+
   try {
-    const got = await feedMore(run, FEED_WANT)
+    const got = await feedMore(run, want)
     if (mine !== feedRun) return
 
 // Обложки приехали вместе с ответом: кладём их в общую память даром, иначе списки и карточки полезут за тем же второй раз.
@@ -754,6 +800,13 @@ function toSettings(): void {
 }
 
 onMounted(() => {
+  // Россыпь считается по фактическому размеру плашки, а он известен только после первой отрисовки.
+  void nextTick(() => {
+    layoutSpray()
+    sprayEye = new ResizeObserver(() => layoutSpray())
+    if (heyPlate.value !== null) sprayEye.observe(heyPlate.value)
+  })
+
   void (async () => {
     try {
       // Подъём снимка без сети: главная должна открываться и при лежащем API.
@@ -779,6 +832,10 @@ onBeforeUnmount(() => {
   feedRun++
   dropSeen()
 
+  // Наблюдатель пережил бы экран и будил бы пересчёт на снятой плашке.
+  sprayEye?.disconnect()
+  sprayEye = null
+
 // Очередь живёт дольше экрана: неснятая подписка держала бы всю витрину в памяти и пересобирала её на каждый ответ.
   stopPlayWatch()
 })
@@ -801,6 +858,52 @@ watch(
 <template>
   <section class="am-page">
     <p v-if="trouble" class="am-error">{{ trouble }}</p>
+
+<!-- Плашка приветствия с россыпью сакур: перенесена из ПК-версии. Календаря активности здесь нет —
+     он занимал правую половину плашки и на приставке съел бы полосу целиком, а фраза с кнопками
+     превратилась бы в лишние остановки для пульта: «Моё» и «Поиск» уже есть в рельсе. -->
+    <div ref="heyPlate" class="am-hey">
+      <span class="am-hey__glow" aria-hidden="true" />
+      <span class="am-hey__beam" aria-hidden="true" />
+      <span ref="heyRose" class="am-hey__rose" aria-hidden="true">
+        <svg :viewBox="SAKURA_ROSETTE_BOX"><path :d="SAKURA_ROSETTE" /></svg>
+      </span>
+
+      <!-- Россыпь: число цветков выходит из свободного места, поэтому их расставляет расчёт
+           (screens/home-spray.ts), а не разметка. Строка с фразой в запрет входит: лепестки не
+           липнут к буквам. -->
+      <span class="am-hey__spray" aria-hidden="true">
+        <span
+          v-for="grain in grains"
+          :key="grain.key"
+          class="am-hey__grain"
+          :class="`am-hey__grain--${grain.depth}`"
+          :style="{
+            left: `${grain.left}px`,
+            top: `${grain.top}px`,
+            width: `${grain.size}px`,
+            height: `${grain.tall}px`,
+            '--am-hey-turn': `${grain.turn}deg`,
+            '--am-hey-rot': `${grain.rot}deg`,
+            '--am-hey-fx': `${grain.fx}px`,
+            '--am-hey-fy': `${grain.fy}px`,
+            '--am-hey-tx': `${grain.tx}px`,
+            '--am-hey-ty': `${grain.ty}px`,
+            '--am-hey-dur': `${grain.dur}s`,
+            '--am-hey-delay': `${grain.delay}s`,
+          }"
+        >
+          <svg :viewBox="SAKURA_ROSETTE_BOX"><path :d="SAKURA_ROSETTE" /></svg>
+        </span>
+      </span>
+
+      <div ref="heyText" class="am-hey__text">
+        <h2 class="am-hey__title">
+          <span class="am-hey__seed"><SakuraMark /></span>
+          <span>{{ splash }}</span>
+        </h2>
+      </div>
+    </div>
 
 <!-- Календарь выхода стоит под шапкой и выше отбора: он отвечает на вопрос, ради которого
      приложение открывают завтра. Полоса дней рисуется сразу — дни это календарь, а не данные. -->
@@ -839,6 +942,7 @@ watch(
             'am-cal__day--past': day.past,
           }"
           type="button"
+          :data-am-first="day.today ? '' : undefined"
           :aria-label="day.title"
           :aria-pressed="day.key === calendarDay?.key"
           @click="pickDay(day.key)"
@@ -859,10 +963,10 @@ watch(
 
       <p v-else-if="calendarFailed" class="am-cal__note">Расписание не пришло — проверьте связь.</p>
 
-<!-- День — полка постеров в один ряд с боковой прокруткой, а не список строк. Число выходов
-     теперь не влияет на высоту: в чужом показе суббота даёт под два десятка серий. Час и номер
-     серии ушли в подпись под названием. Метку доступности календарь добывает сам, всем днём разом. -->
-      <ul v-else-if="dayRows.length > 0" class="am-rail am-cal__rail">
+<!-- День — полка постеров в один ряд с боковой прокруткой, а не список строк. Час и номер серии ушли
+     в подпись под названием. Метку доступности календарь добывает сам, всем днём разом.
+     data-am-row: прыжок между полками вверх-вниз встаёт на крайний левый постер (dpad.ts). -->
+      <ul v-else-if="dayRows.length > 0" class="am-rail am-cal__rail" data-am-row>
         <MediaTile
           v-for="row in dayRows"
           :key="row.key"
@@ -876,8 +980,7 @@ watch(
       </ul>
 
 <!-- Пустой день — тоже пустое состояние, и знак у него тот же, что у крупных: лист календаря.
-     День, где всё спрятал отбор, пустым не объявляется: «выходов нет» было бы неправдой.
-     Скрытое считается за неделю, а помнится по дням — иначе отличить тишину от отбора нечем. -->
+     День, где всё спрятал отбор, пустым не объявляется: «выходов нет» было бы неправдой. -->
       <p v-else-if="calendarHiddenDays.has(calendarDay?.key ?? 0)" class="am-cal__note">
         В этот день выходы скрыты меткой 18+.
       </p>
@@ -892,8 +995,10 @@ watch(
       </p>
     </section>
 
-<!-- Ряд отбора: кнопка меню, быстрые жанры одной лентой и сброс. Внутренний ряд нужен для центровки. -->
-    <div class="am-sift">
+<!-- Ряд отбора: кнопка меню, быстрые жанры одной лентой и сброс. Внутренний ряд нужен для центровки.
+     data-am-row: вход на ряд сверху или снизу встаёт на «Фильтры» — она самая левая, и по геометрии
+     фокус вставал бы на чип, минуя кнопку, с которой начинают набор условий (dpad.ts). -->
+    <div class="am-sift" data-am-row>
       <button class="am-btn am-sift__open" type="button" @click="sheetOpen = true">
         Фильтры
         <span v-if="pickCount > 0" class="am-sift__num">{{ pickCount }}</span>
@@ -952,7 +1057,7 @@ watch(
           <button class="am-btn am-btn--ghost" type="button" @click="toLists">К спискам</button>
         </div>
 
-        <ul class="am-rail">
+        <ul class="am-rail" data-am-row>
           <MediaTile
             v-for="row in ownRows"
             :key="row.mediaId"
@@ -977,7 +1082,7 @@ watch(
           <h2 class="am-h2">{{ shelf.title }}</h2>
         </div>
 
-        <ul class="am-rail">
+        <ul class="am-rail" data-am-row>
           <MediaTile
             v-for="row in shelf.rows"
             :key="row.mediaId"
@@ -1008,7 +1113,7 @@ watch(
           <h2 class="am-h2">{{ feedTitle }}</h2>
         </div>
 
-        <ul v-if="feedRows.length > 0" class="am-grid">
+        <ul v-if="feedRows.length > 0" class="am-grid" data-am-row>
           <MediaTile
             v-for="row in feedRows"
             :key="row.mediaId"
@@ -1083,6 +1188,169 @@ watch(
 </template>
 
 <style scoped>
+/* ПЛАШКА ПРИВЕТСТВИЯ. Перенесена из ПК-версии вместе с россыпью сакур (screens/home-spray.ts).
+   Отличия от оригинала ровно два, оба про телевизор: календаря активности нет (он в ПК занимал
+   правую половину и здесь съел бы полосу целиком) и кнопок нет — «Моё» и «Поиск» уже стоят в
+   рельсе, а на пульте это были бы лишние остановки. Высота плашки принадлежит строке с фразой. */
+.am-hey {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  padding: clamp(12px, 1.4vw, 18px) clamp(20px, 3vw, 40px);
+  background: var(--am-glass);
+  border: 1px solid var(--am-line-soft);
+  border-radius: var(--am-r-xl);
+  box-shadow:
+    var(--am-sh-2),
+    inset 0 1px 0 var(--am-edge);
+  backdrop-filter: blur(var(--am-blur)) saturate(1.4);
+}
+
+/* Слева приветствие столбцом: фраза занимает строку, кнопок под ней нет. */
+.am-hey__text {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-width: 74ch;
+}
+
+/* Капля под стеклом: без неё размывать нечего, панель выглядела бы грязным прямоугольником. */
+.am-hey__glow {
+  position: absolute;
+  z-index: -1;
+  bottom: -80%;
+  left: 12%;
+  width: 34%;
+  height: 170%;
+  border-radius: var(--am-r-blob);
+  background: rgb(var(--am-accent-rgb) / 0.3);
+  filter: blur(42px);
+  pointer-events: none;
+  animation: am-hey-float calc(var(--am-drift) * 1.4) var(--am-ease-soft) infinite
+    alternate-reverse;
+}
+
+@keyframes am-hey-float {
+  from {
+    transform: translate3d(-6%, -4%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(7%, 5%, 0) scale(1.14);
+  }
+}
+
+/* Луч: диагональная полоса вместо второго пятна. Ездит медленно и едва заметно — полоса собирает
+   лист, а не спорит со строкой. */
+.am-hey__beam {
+  position: absolute;
+  z-index: -1;
+  inset: -30% -20%;
+  background: linear-gradient(
+    104deg,
+    transparent 34%,
+    rgb(var(--am-accent-rgb) / 0.16) 48%,
+    rgb(var(--am-accent-2-rgb) / 0.22) 56%,
+    transparent 70%
+  );
+  pointer-events: none;
+  animation: am-hey-sweep calc(var(--am-drift) * 1.2) var(--am-ease-soft) infinite alternate;
+}
+
+@keyframes am-hey-sweep {
+  from {
+    transform: translateX(-6%);
+  }
+  to {
+    transform: translateX(7%);
+  }
+}
+
+/* Крупная розетка в правом краю; высота — от высоты плашки, а не ширины: на широком окне знак
+   не влез бы. Свес сверху и снизу ровный. */
+.am-hey__rose {
+  position: absolute;
+  z-index: -1;
+  top: -25%;
+  right: -4%;
+  height: 150%;
+  aspect-ratio: v-bind(ROSE_ASPECT);
+  color: rgb(var(--am-accent-2-rgb) / 0.3);
+  pointer-events: none;
+}
+
+.am-hey__rose svg,
+.am-hey__grain svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: currentcolor;
+}
+
+/* Россыпь. Сами цветки ставит расчёт (screens/home-spray.ts): их число выходит из свободного
+   места, оттого здесь только глубины и движение. */
+.am-hey__spray {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.am-hey__grain {
+  position: absolute;
+  color: rgb(var(--am-accent-2-rgb));
+  animation: am-hey-drift var(--am-hey-dur) var(--am-ease-soft) var(--am-hey-delay) infinite
+    alternate;
+}
+
+/* Три глубины: крупные бледные сзади, мелкие плотные спереди. */
+.am-hey__grain--far {
+  opacity: 0.1;
+  filter: blur(2px);
+}
+
+.am-hey__grain--mid {
+  opacity: 0.18;
+}
+
+.am-hey__grain--near {
+  opacity: 0.26;
+}
+
+/* Цветок плывёт и покачивается: с поворотом смещение читается плывущим лепестком, а не пятном. */
+@keyframes am-hey-drift {
+  from {
+    transform: translate3d(var(--am-hey-fx), var(--am-hey-fy), 0)
+      rotate(calc(var(--am-hey-turn) - var(--am-hey-rot)));
+  }
+  to {
+    transform: translate3d(var(--am-hey-tx), var(--am-hey-ty), 0)
+      rotate(calc(var(--am-hey-turn) + var(--am-hey-rot)));
+  }
+}
+
+/* Одна строка: фраза реестра, а не постоянный заголовок. */
+.am-hey__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: clamp(22px, 2.2vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+/* Знак в строке наследует цвет и размер: --am-sakura-size — свойство, а не правило, поэтому оно
+   доезжает и до знака внутри компонента. */
+.am-hey__seed {
+  flex: none;
+  display: flex;
+  --am-sakura-size: 0.62em;
+  color: rgb(var(--am-accent-2-rgb));
+}
+
 /* Календарь выхода. Стекло то же, что у полосы отбора: обе — служебные полосы, а не содержимое витрины. */
 .am-cal {
   display: flex;
@@ -1137,7 +1405,7 @@ watch(
     opacity var(--am-fast) var(--am-ease);
 }
 
-.am-cal__day:hover {
+.am-cal__day:hover:where(:not(.am-lite *)) {
   color: var(--am-text);
   background: var(--am-hover);
 }
@@ -1147,7 +1415,7 @@ watch(
   opacity: 0.62;
 }
 
-.am-cal__day--past:hover {
+.am-cal__day--past:hover:where(:not(.am-lite *)) {
   opacity: 1;
 }
 
@@ -1190,9 +1458,8 @@ watch(
   background: var(--am-accent);
 }
 
-/* Полка под полосой: отступы теснее общих. Внешние поля полки рассчитаны на то, что она стоит
-   сама по себе, а здесь её обнимает стекло календаря. Сверху десять, а не ноль: плитка под
-   курсором приподнимается, и полоса прокрутки обрезала бы ей макушку. */
+/* Полка под полосой: отступы теснее общих. Сверху десять, а не ноль: плитка под курсором
+   приподнимается, и полоса прокрутки обрезала бы ей макушку. */
 .am-cal__rail {
   gap: 12px;
   padding: 10px 4px 8px;
@@ -1213,9 +1480,8 @@ watch(
   gap: 8px;
 }
 
-/* Кегль знака. Сам знак берёт размер от кегля места (width: 1em), и здесь это 16 вместо общих 34:
-   в строке примечания крупный знак раздул бы её втрое. Шестнадцать, а не двенадцать с половиной:
-   при кегле примечания штрих выходил тоньше пикселя. Высота строки от этого не растёт. */
+/* Кегль знака. Знак берёт размер от кегля места (width: 1em), и здесь это 16 вместо общих 34: в строке
+   примечания крупный знак раздул бы её втрое, а при кегле примечания штрих выходил тоньше пикселя. */
 .am-cal__mark {
   flex: none;
   font-size: 16px;

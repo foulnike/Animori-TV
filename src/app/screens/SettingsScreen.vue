@@ -1,12 +1,8 @@
 <script setup lang="ts">
-// Настройки: перенос списка, свои данные, копия по ссылке, внешность и справка.
-// Чего здесь нет на приставке: вход в AniList (нужен браузер), выгрузка в XML (нужен
-// проводник), плашка со звездой (ведёт на GitHub). Шикимори осталась: вход ей не нужен,
-// а ник пультом набрать можно. Панели собраны в колонки-обёртки, а не в общие строки
-// сетки: высокая панель облака иначе держала строку и под соседними зияла пустота.
-// Число колонок под размер окна — в settings-screen.css; на приставке колонка одна.
+// На приставке нет входа в AniList, выгрузки в XML и плашки со звездой. Панели спрятаны за плитами
+// мозаики: обход пульта получает шесть остановок, а панель открывается окном поверх экрана.
 
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { Bridge } from '@/bridge'
 import {
@@ -22,14 +18,17 @@ import { clearCache, getDbStats } from '@/core/db'
 import { adultByBirth } from '@/core/adult'
 import { forgetRecs } from '@/core/recs'
 import { saveSetting, settings } from '@/core/settings'
-
 import { APPEARANCES, appearance, setAppearance } from '../appearance'
-import { updateOffer, updateOpen } from '../update'
+import { checkUpdate, installUpdate, updateOffer } from '../update'
 import BrandMark from '../components/BrandMark.vue'
 import CloudBox from '../components/CloudBox.vue'
-import DatePick from '../components/DatePick.vue'
+import DateField from '../components/DateField.vue'
 import ProxyBox from '../components/ProxyBox.vue'
+import SettingMark from '../components/SettingMark.vue'
+import SettingsSheet from '../components/SettingsSheet.vue'
+import { restoreFocus } from '../focus-return'
 import { canOpenOutside, isWeakPlatform } from '../platform'
+import { SAKURA_ROSETTE, SAKURA_ROSETTE_BOX } from '../sakura'
 
 const version = __ANIMORI_VERSION__
 
@@ -58,9 +57,8 @@ function onDatasetLink(): void {
   void Bridge.shell.openExternal(DATASET_URL)
 }
 
-/** Есть ли куда вести ссылкам наружу. На телевизоре браузера нет, и обе кнопки —
- * репозиторий и датасет — уводили бы в никуда. Плашка репозитория снимается целиком,
- * а имя датасета остаётся простым текстом. */
+/** Есть ли куда вести ссылкам наружу. На телевизоре браузера нет, и обе кнопки уводили бы в никуда:
+ * плашка репозитория снимается целиком, а имя датасета остаётся простым текстом. */
 const outside = canOpenOutside()
 
 // Ошибки показываются рядом с кнопкой, а не глотаются: молчаливый catch означал бы кнопку, которая не говорит почему.
@@ -71,13 +69,21 @@ const busy = ref(false)
 const note = ref('')
 const cleared = ref(false)
 
-/** Спрошено ли подтверждение удаления списка. Спрашивается всегда: местные записи
+/** Спросено ли подтверждение удаления списка. Спрашивается всегда: местные записи
  * вернуть потом неоткуда, их нет ни на каком сервере. */
 const askingDrop = ref(false)
+
+/** Кнопка очистки памяти: запасная цель возврата фокуса после удаления списка —
+ *  «Удалить» рядом с ней исчезает вместе с пустым списком. */
+const clearBtn = ref<HTMLButtonElement | null>(null)
 
 /** Ник на Шикимори. Списывается с памяти настроек один раз: общий объект настроек
  * не реактивен, и v-model по его полю не показал бы набранное. */
 const shikiNick = ref(settings.shikiNick)
+
+/** Кнопка переноса списка: запасная цель возврата фокуса после переноса — кнопки
+ *  вопроса, с которых его начали, к этому времени нет в разметке. */
+const shikiBtn = ref<HTMLButtonElement | null>(null)
 
 /** Спрошено ли подтверждение переноса с Шикимори. Спрашивается по тем же причинам. */
 const askingShiki = ref(false)
@@ -102,6 +108,50 @@ const datasetStale = ref(false)
  * пропущенные недельные сборки: одна могла упасть случайно, три значат, что расписание уснуло. */
 const STALE_DAYS = 30
 
+/// Проверка обновления идёт прямо в панели «О программе»: окно поверх окна на пульте
+/// негде развернуть — вторая рамка прятала первую. Состояние своё, а не общее с окном
+/// из рельса: рельс своё окно открывает сам.
+const upBusy = ref(false)
+
+/** Кнопка проверки обновления: запасная цель возврата фокуса, когда её саму не стало
+ *  под курсором — ответ приходит, пока пульт стоит на крестике. */
+const upBtn = ref<HTMLButtonElement | null>(null)
+
+/** Слово проверки, когда сказать нечего: последняя версия, отказ GitHub или подсказка системе. */
+const upNote = ref('')
+
+/** Спрашивание GitHub. Неудача здесь не поломка: обновление просто не находится,
+ *  и панель говорит это словами, а не молча. */
+async function onUpCheck(): Promise<void> {
+  const from = document.activeElement
+  upBusy.value = true
+  upNote.value = ''
+
+  try {
+    updateOffer.value = await checkUpdate()
+    if (updateOffer.value === null) upNote.value = 'Обновлений нет — это последняя версия.'
+  } catch {
+    updateOffer.value = null
+    upNote.value = 'Спросить не удалось: GitHub не ответил. Попробуйте позже.'
+  } finally {
+    upBusy.value = false
+    // Кнопка гасла disabled, и пульт стоял на крестике: возвращаем его к ответу,
+    // который теперь читается строкой ниже.
+    restoreFocus(from, () => upBtn.value)
+  }
+}
+
+/** Отдаёт файл системе. false — прав на установку из неизвестных источников ещё нет:
+ *  это ожидаемый первый шаг, а не отказ. */
+function onUpInstall(): void {
+  const offer = updateOffer.value
+  if (offer === null) return
+
+  if (!installUpdate(offer.url)) {
+    upNote.value = 'Система попросит разрешить установку — разрешите и нажмите кнопку ещё раз.'
+  }
+}
+
 /** Показ взрослого (пункт 3.8). Значение списывается с памяти настроек один раз:
  * общий объект настроек не реактивен, и v-model по его полю не дал бы ответа на клик. */
 const adult = ref(settings.showAdult)
@@ -110,17 +160,40 @@ const adult = ref(settings.showAdult)
  * вопрос: до него тумблер стоит выключенным. */
 const askingAge = ref(false)
 
-/** Дата рождения из календарика. Живёт только до ответа и никуда не пишется. */
+/** Дата рождения из поля ввода. Живёт только до ответа и никуда не пишется. */
 const birth = ref('')
 
 /** Слова отказа. Пустая строка — отказа нет. */
 const ageError = ref('')
 
+/** Плита мозаики: за каждой своё окно. */
+type Door = 'list' | 'look' | 'data' | 'cloud' | 'net' | 'about'
+
+/** Открытая плита. null — мозаика на виду. */
+const openDoor = ref<Door | null>(null)
+
+/** Плиты мозаики: под каждой своё окно, и имя его называет. Подпись под именем убрана:
+ *  плита держится на знаке и имени, а мелкая строка под заголовком на пульте только шумит. */
+const doors = computed<ReadonlyArray<{ name: Door; title: string }>>(() => [
+  { name: 'list', title: 'Импорт списка' },
+  { name: 'look', title: 'Оформление' },
+  { name: 'data', title: 'Данные' },
+  { name: 'cloud', title: 'Копия списка' },
+  { name: 'net', title: 'Прокси' },
+  { name: 'about', title: 'О программе' },
+])
+
 function describe(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-async function guard(action: () => Promise<void>): Promise<void> {
+async function guard(
+  action: () => Promise<void>,
+  fallback?: () => HTMLElement | null,
+): Promise<void> {
+  // Держатель запоминается до busy: кнопка станет disabled и отдаст фокус, а по возврате
+  // обход не вернёт его сам — ему не о ком вспомнить.
+  const from = document.activeElement
   busy.value = true
   error.value = ''
   try {
@@ -129,12 +202,12 @@ async function guard(action: () => Promise<void>): Promise<void> {
     error.value = describe(e)
   } finally {
     busy.value = false
+    restoreFocus(from, fallback)
   }
 }
 
 /// Числа переспрашиваются после каждой кнопки: показанное должно совпадать с тем, что
-/// лежит внутри. Подъём обязателен: настройки открывают раньше списков, и без него сводка
-/// показывала ноль при живом списке на диске. Сам подъём идемпотентен и в сеть не ходит.
+/// лежит внутри. Подъём обязателен: настройки открывают раньше списков.
 async function readState(): Promise<void> {
   await initCollection()
   listCount.value = entryCount()
@@ -204,6 +277,9 @@ function datesText(done: ShikiPullResult): string {
 /** Перенос списка с Шикимори по нику. Способы те же два, и вопрос тот же: замена вычищает
  * всё, включая перенесённое с AniList и добавленное руками. */
 function onShikiPull(mode: PullMode): void {
+  // Держатель — кнопка вопроса: она уходит из разметки в ту же секунду, вместе с вопросом,
+  // и без запоминания фокус после многоминутного переноса остался бы на крестике окна.
+  const from = document.activeElement
   askingShiki.value = false
 
   void (async () => {
@@ -232,6 +308,7 @@ function onShikiPull(mode: PullMode): void {
       shikiError.value = describe(e)
     } finally {
       shikiBusy.value = false
+      restoreFocus(from, () => shikiBtn.value)
     }
   })()
 }
@@ -252,17 +329,22 @@ function onCancelDrop(): void {
 function onDropList(): void {
   askingDrop.value = false
 
-  void guard(async () => {
-    note.value = ''
-    await forgetCollection()
-    await readState()
-    note.value = 'Список удалён. На AniList ваши записи остались нетронутыми.'
-  })
+  void guard(
+    async () => {
+      note.value = ''
+      await forgetCollection()
+      await readState()
+      note.value = 'Список удалён. На AniList ваши записи остались нетронутыми.'
+    },
+    // Кнопки вопроса к этому моменту нет, а своей «Удалить» тоже не будет — список пуст.
+    // Фокус остаётся в панели: на «Очистить память», единственной живой рядом.
+    () => clearBtn.value,
+  )
 }
 
 /** Переключение показа взрослого: отбор читает ключ в момент вопроса, перезапуск не нужен.
- * Исключение — полки витрины: состав собран заранее, поэтому тумблер выбрасывает его через
- * forgetRecs. Включение спрашивает дату рождения: проверка формальная, дата никуда не уходит. */
+ * Исключение — полки витрины: состав собран заранее, поэтому тумблер выбрасывает его
+ * через forgetRecs. Включение спрашивает дату рождения: проверка формальная. */
 function onAdult(): void {
   if (!adult.value) {
     void saveSetting('showAdult', 'set_adult', false)
@@ -277,19 +359,21 @@ function onAdult(): void {
   askingAge.value = true
 }
 
-/** Enter на строке-тумблере. Галочка внутри строки переключается с клавиатуры сама, а
- * метка вокруг неё — нет: `<label>` щелчок мышью превращает в нажатие по полю, но Enter
- * и пробел на себе не разбирает. На телевизоре фокус стоит именно на строке, поэтому
- * переключаем значение сами и зовём тот же обработчик, что и по клику. */
+/** Enter на строке-тумблере. Галочка внутри строки переключается с клавиатуры сама, а метка
+ * вокруг неё — нет: `<label>` щелчок мышью превращает в нажатие по полю, но Enter и пробел
+ * на себе не разбирает. Переключаем значение сами и зовём тот же обработчик, что и по клику. */
 function onAdultKey(): void {
   adult.value = !adult.value
   onAdult()
 }
 
-/** Ответ календарика. Пустая дата — «стёрли», и это не ответ. */
+/** Ответ поля даты. Пустая дата — «стёрли»: сказанный прежде отказ к пустому полю не относится. */
 function onBirth(value: string): void {
   birth.value = value
-  if (value === '') return
+  if (value === '') {
+    ageError.value = ''
+    return
+  }
 
   if (!adultByBirth(value)) {
     ageError.value = 'В доступе отказано'
@@ -354,9 +438,29 @@ onMounted(() => {
 
 <template>
   <section class="am-page">
-<!-- Три колонки-обёртки: каждая набирает свои панели встык, и высота соседней ей безразлична. -->
-    <div class="am-set">
-      <div class="am-set__col am-set__col--main">
+<!-- Мозаика плит: шесть плит вместо длинной колонки панелей. Обход пульта получает шесть
+     остановок вместо пятнадцати, а знакомая панель открывается окном поверх экрана. -->
+    <div class="am-doors">
+      <button
+        v-for="item in doors"
+        :key="item.name"
+        class="am-door"
+        type="button"
+        @click="openDoor = item.name"
+      >
+        <!-- Цветок-подложка: та же розетка, что на плитках статистики ПК-билда, под
+             подписью и срезанная углом плитки (см. settings-screen.css). -->
+        <span class="am-door__flower" aria-hidden="true">
+          <svg :viewBox="SAKURA_ROSETTE_BOX"><path :d="SAKURA_ROSETTE" /></svg>
+        </span>
+        <span class="am-door__mark"><SettingMark :name="item.name" /></span>
+        <span class="am-door__name">{{ item.title }}</span>
+      </button>
+    </div>
+
+<!-- Окна: по одному на плиту, поднимаются по нажатию. Панели внутри — те же, что стояли колонкой,
+     и заголовок окну даёт заголовок панели. -->
+    <SettingsSheet :open="openDoor === 'list'" title="Импорт списка" @close="openDoor = null">
 <!-- Импорт списка. Из двух источников осталась Шикимори: AniList требует входа через окно
      браузера, а браузера на телевизоре нет. Знак берёт components/BrandMark.vue из brand/shikimori.svg. -->
         <div class="am-panel am-box">
@@ -390,6 +494,7 @@ onMounted(() => {
               </label>
               <button
                 v-tip="'Забрать список с Шикимори: слиянием или с заменой'"
+                ref="shikiBtn"
                 class="am-btn"
                 type="button"
                 :disabled="shikiBusy || !shikiNick.trim()"
@@ -430,7 +535,9 @@ onMounted(() => {
             <p v-if="shikiError" class="am-error">{{ shikiError }}</p>
           </div>
         </div>
+    </SettingsSheet>
 
+    <SettingsSheet :open="openDoor === 'data'" title="Данные" @close="openDoor = null">
         <!-- Данные: что лежит на этом диске и что с этим можно сделать. -->
         <div class="am-panel am-box">
           <h3 class="am-h3">Данные</h3>
@@ -450,6 +557,7 @@ onMounted(() => {
           <div class="am-row">
             <button
               v-tip="'Убрать сохранённые названия, описания и обложки'"
+              ref="clearBtn"
               class="am-btn am-btn--ghost"
               type="button"
               :disabled="busy"
@@ -491,16 +599,14 @@ onMounted(() => {
           <p v-if="note" class="am-note">{{ note }}</p>
           <p v-if="error" class="am-error">{{ error }}</p>
         </div>
-      </div>
+    </SettingsSheet>
 
-<!-- Копия списка своим узлом: на телевизоре от неё остался один путь — забрать копию по
-     ссылке (components/CloudBox.vue). Своя колонка: панель самая высокая на экране. -->
-      <div class="am-set__col am-set__col--cloud">
-        <CloudBox :list="listCount" @changed="onCloudChanged" />
-      </div>
+<!-- Копия списка: на телевизоре от неё остался один путь — забрать копию по ссылке. -->
+    <SettingsSheet :open="openDoor === 'cloud'" title="Копия списка" @close="openDoor = null">
+      <CloudBox :list="listCount" @changed="onCloudChanged" />
+    </SettingsSheet>
 
-      <!-- Оформление: то, что смотрят, а не то, чем правят. -->
-      <div class="am-set__col am-set__col--look">
+    <SettingsSheet :open="openDoor === 'look'" title="Оформление" @close="openDoor = null">
         <div class="am-panel am-box">
           <h3 class="am-h3">Оформление</h3>
 
@@ -519,9 +625,8 @@ onMounted(() => {
             </button>
           </div>
 
-<!-- Строка-тумблер на телевизоре сама берёт фокус, а галочка внутри из обхода убирается.
-     Обход пульта ищет соседа по геометрии, и в ряду трёх тем под карточкой нет ничего, что
-     перекрывалось бы с тумблером по горизонтали: шаг вниз уходил в панель прокси, минуя его. -->
+<!-- Строка-тумблер на телевизоре сама берёт фокус, а галочка внутри из обхода убирается: обход
+     пульта ищет соседа по геометрии, и рядом с тумблером по горизонтали нет ничего, что его перекрывало бы. -->
           <label
             class="am-switch"
             :tabindex="lite ? 0 : -1"
@@ -545,7 +650,7 @@ onMounted(() => {
           <div v-if="askingAge" class="am-age">
             <p class="am-age__ask">Укажите ваш возраст</p>
 
-            <DatePick :value="birth" title="Дата рождения" @pick="onBirth" />
+            <DateField :value="birth" title="Дата рождения" @pick="onBirth" />
 
             <p v-if="ageError" class="am-error">{{ ageError }}</p>
 
@@ -554,19 +659,16 @@ onMounted(() => {
             </button>
           </div>
         </div>
-      </div>
+    </SettingsSheet>
 
-<!-- Прокси своим узлом: у панели своё состояние и свой разговор с оболочкой, и экрану
-     настроек о нём знать нечего. Столбец ей выбирает ширина окна, потому она лежит не рядом
-     с «Данными», а после копии. Разбор — в settings-screen.css, у правил .am-set. -->
-      <div class="am-set__col am-set__col--proxy">
-        <ProxyBox />
-      </div>
+<!-- Прокси: у панели своё состояние и свой разговор с оболочкой, потому и своё окно. -->
+    <SettingsSheet :open="openDoor === 'net'" title="Прокси" @close="openDoor = null">
+      <ProxyBox />
+    </SettingsSheet>
 
-<!-- О программе — последней в разметке, то есть в самом низу экрана. Здесь только то, что
-     читают один раз: версия, система, датасет и лицензия. Отдельной колонкой, а не хвостом
-     предыдущей: внутри чужой колонки панель не может быть ниже соседей. -->
-      <div class="am-set__col am-set__col--about">
+<!-- О программе — последнее окно: здесь только то, что читают один раз, — версия, система,
+     датасет и лицензия. -->
+    <SettingsSheet :open="openDoor === 'about'" title="О программе" @close="openDoor = null">
         <div class="am-panel am-box">
           <h3 class="am-h3">О программе</h3>
 
@@ -587,17 +689,26 @@ onMounted(() => {
             </li>
           </ul>
 
-<!-- Проверка обновления кнопкой, а не только при старте: стартовая сверка могла не
-     дойти, а ждать следующего запуска у приставки долго — её выключают на ночь.
-     Подпись меняется, когда выпуск уже найден: тогда кнопка ведёт прямо к установке. -->
+<!-- Проверка обновления кнопкой прямо в панели, а не отдельным окном: окно поверх окна
+     на пульте негде развернуть. Одна кнопка ведёт и проверку, и установку — по состоянию. -->
           <button
+            ref="upBtn"
             class="am-btn am-btn--soft am-up"
             :class="{ 'am-up--new': updateOffer !== null }"
             type="button"
-            @click="updateOpen = true"
+            :disabled="upBusy"
+            @click="updateOffer !== null ? onUpInstall() : onUpCheck()"
           >
-            {{ updateOffer ? `Обновление до ${updateOffer.version}` : 'Проверить обновление' }}
+            {{
+              upBusy
+                ? 'Спрашиваем GitHub…'
+                : updateOffer
+                  ? `Обновление до ${updateOffer.version}`
+                  : 'Проверить обновление'
+            }}
           </button>
+
+          <p v-if="upNote" class="am-note">{{ upNote }}</p>
 
 <!-- Плашки с просьбой о звезде здесь больше нет: она вела на GitHub, а ссылку наружу на телевизоре открыть нечем. -->
 
@@ -620,8 +731,7 @@ onMounted(() => {
             и запустите сборку кнопкой.
           </p>
         </div>
-      </div>
-    </div>
+    </SettingsSheet>
   </section>
 </template>
 

@@ -1,9 +1,6 @@
 <script setup lang="ts">
-// Читатель журнала. До него журнал писался в пустоту: Logger складывал записи в кольцевой
-// буфер, registerLogSink не звал никто, а в консоль уходили только WARN и ERROR — записи
-// вида DB и API не доезжали никуда. Экран не отладочный по замыслу: «пришлите, что в
-// журнале» — единственный внятный вопрос человеку, у которого что-то не работает.
-// Здесь же два счётчика бережливости: бюджет источников и склад.
+// Читатель журнала. Экран не отладочный по замыслу: «пришлите, что в журнале» — единственный внятный
+// вопрос человеку, у которого что-то не работает. Здесь же два счётчика бережливости.
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { collectRateStats, type RateLimiterStats } from '@/api/rate-limit'
@@ -460,7 +457,7 @@ onBeforeUnmount(() => {
   transition: background-color var(--am-fast) var(--am-ease);
 }
 
-.am-log__row:hover {
+.am-log__row:hover:where(:not(.am-lite *)) {
   background: var(--am-fill-2);
 }
 

@@ -1,9 +1,6 @@
 <script setup lang="ts">
-// Кадры и трейлер тайтла: плитка доски на месте музыкального плеера.
-// Два источника, и это не видно: трейлер даёт AniList, кадры — Шикимори, у обоих
-// одна форма. У кого нет страницы встраивания, окно не открывается — сразу наружу.
-// Кадров бывает полсотни: видно шесть, шестая клетка — счётчик и вход в галерею.
-// В сетке уменьшенные кадры (~60 КБ), в просмотре полный (~1 МБ) и ровно один.
+// Кадры и трейлер тайтла. Два источника, и это не видно: трейлер даёт AniList, кадры —
+// Шикимори. У кого нет страницы встраивания, окно не открывается — сразу наружу.
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
@@ -12,7 +9,7 @@ import { Bridge } from '@/bridge'
 import type { MediaClip, MediaShot, MediaTrailer } from '@/core/types'
 import { Logger } from '@/utils/logger'
 
-import { canOpenOutside } from '../platform'
+import { canOpenOutside, isWeakPlatform } from '../platform'
 
 const props = defineProps<{
   mediaId: number
@@ -21,9 +18,8 @@ const props = defineProps<{
   trailer: MediaTrailer | null
 }>()
 
-/** Сколько клеток в сетке плитки: восемь — четыре в ряд на двух строках и четыре
- * в два ряда, когда кадр встаёт боком. Только при восьми клетках в четыре колонки
- * ряд ложится ровно, и низы плитки сходятся с франшизой. */
+/** Сколько клеток в сетке плитки: восемь — четыре в ряд на двух строках и четыре в два
+ *  ряда, когда кадр встаёт боком. Только при восьми ряд ложится ровно. */
 const GRID_SHOTS = 8
 
 const shots = ref<MediaShot[]>([])
@@ -40,9 +36,8 @@ const reel = ref(false)
 
 const gal = ref(false)
 
-/** Картинки, которые уже отработали — приехали или отвалились. Источник отвечает
- * быстро, а файлы едут с чужого CDN: без заглушки плитка на секунду показывает
- * пустые клетки. Ключ — адрес картинки: он свой у каждого кадра. */
+/** Картинки, которые уже отработали — приехали или отвалились. Файлы едут с чужого
+ *  CDN: без заглушки плитка на секунду показывает пустые клетки. */
 const ready = ref<ReadonlySet<string>>(new Set())
 
 /** Ждёт ли картинка своего часа: пока да, на её месте ходит заглушка. */
@@ -62,9 +57,8 @@ function markReady(url: string | null): void {
  * ответ, пришедший после ухода, к показу не относится. */
 let run = 0
 
-/** Трейлер к показу: свой из карточки, а без него — анонс из роликов Шикимори.
- * Берётся первый встраиваемый анонс, а если анонсов нет — первый встраиваемый
- * ролик любого вида: часть тайтлов зовёт анонсом заставку. */
+/** Трейлер к показу: свой из карточки, а без него — анонс из роликов Шикимори. Нет анонсов —
+ *  первый встраиваемый ролик любого вида: часть тайтлов зовёт анонсом заставку. */
 const reelTrailer = computed<MediaTrailer | null>(() => {
 // Тизера на телевизоре нет: плеер встраивается фреймом с YouTube, а его на ТВ-фреймворке
 // либо нет, либо он тянет весь браузерный вес; без встраивания кнопка уводила бы наружу.
@@ -152,7 +146,8 @@ function closeTop(): void {
 }
 
 /** Клавиши: Escape закрывает, стрелки ходят по кадрам. Прослушивание на окне, а не
- * на корне плитки: просмотр и трейлер живут в общем слое, и фокус бывает уже там. */
+ * на корне плитки: просмотр и трейлер живут в общем слое, и фокус бывает уже там.
+ * На приставке стрелки ходят не по кадрам, а по кнопкам окна — почему, ниже. */
 function onKey(event: KeyboardEvent): void {
   if (gal.value || reel.value || look.value >= 0) {
     if (event.key === 'Escape') {
@@ -163,6 +158,12 @@ function onKey(event: KeyboardEvent): void {
   }
 
   if (look.value < 0) return
+
+  // На приставке стрелки заняты обходом фокуса: `app/dpad.ts` поднимается в `main.ts` по тому же
+  // признаку, что и `.am-lite`, слушает окно и ведёт по кнопкам окна просмотра. Шаг по кадрам
+  // остаётся кнопкам — как у года выхода, где стрелки проходят сквозь поле. Иначе на одно
+  // нажатие приходилось два дела: кадр уезжал под рукой и фокус уходил на соседа.
+  if (isWeakPlatform()) return
 
   if (event.key === 'ArrowRight') {
     event.preventDefault()
@@ -445,12 +446,14 @@ watch(() => [props.mediaId, props.malId], load)
   padding: 0;
   cursor: pointer;
   background: var(--am-fill-1);
-  border: 0;
+  /* Кромка пустой клетки: заливка на AMOLED снимается, и отсутствующие
+     кадры без неё читались бы дырами в сетке. */
+  border: 1px solid transparent;
   border-radius: var(--am-r-m);
   transition: transform var(--am-fast) var(--am-ease);
 }
 
-.am-shots__cell:hover,
+.am-shots__cell:hover:where(:not(.am-lite *)),
 .am-shots__cell:focus-visible {
   transform: translateY(-1px);
 }
@@ -465,6 +468,7 @@ watch(() => [props.mediaId, props.malId], load)
 /* Заглушка на месте кадра: та же пропорция, что у клетки, — появление кадров не перекладывает сетку. */
 .am-shots__hold {
   aspect-ratio: 16 / 9;
+  border: 1px solid transparent;
   border-radius: var(--am-r-m);
 }
 
@@ -491,7 +495,8 @@ watch(() => [props.mediaId, props.malId], load)
   padding: 0;
   cursor: pointer;
   background: var(--am-fill-1);
-  border: 0;
+  /* Кромка та же, что у сетки кадров выше: там же описано зачем. */
+  border: 1px solid transparent;
   border-radius: var(--am-r-m);
 }
 
@@ -503,7 +508,7 @@ watch(() => [props.mediaId, props.malId], load)
   transition: transform var(--am-slow) var(--am-ease);
 }
 
-.am-shots__reel:hover .am-shots__reelart,
+.am-shots__reel:hover:where(:not(.am-lite *)) .am-shots__reelart,
 .am-shots__reel:focus-visible .am-shots__reelart {
   transform: scale(1.03);
 }
@@ -529,16 +534,13 @@ watch(() => [props.mediaId, props.malId], load)
   fill: currentcolor;
 }
 
-.am-shots__reel:hover .am-shots__play,
+.am-shots__reel:hover:where(:not(.am-lite *)) .am-shots__play,
 .am-shots__reel:focus-visible .am-shots__play {
   transform: translate(-50%, -50%) scale(1.08);
 }
 
-/* ШИРОКАЯ ПЛИТКА: ТРЕЙЛЕР И СЕТКА РЯДОМ. Кадр трейлера шестнадцать на девять, высота
-   привязана к ширине: в колонке доски в тысячу сто он один занимает шестьсот двадцать,
-   и плитка выходит вдвое выше франшизы — кадр надо ставить боком к сетке.
-   Треть трейлеру, две трети сетке: восемь клеток в четыре колонки требуют двух рядов,
-   и высота сходится при отношении один к двум. ПОРОГ 820: ниже клетка мельче 130 — значок, не превью. */
+/* ШИРОКАЯ ПЛИТКА: ТРЕЙЛЕР И СЕТКА РЯДОМ. Высота трейлера привязана к ширине, и один он
+   плитку выводит вдвое выше франшизы. ПОРОГ 820: ниже клетка мельче 130 — значок, не превью. */
 @container (min-width: 820px) {
   .am-shots__body:has(.am-shots__reel) {
     display: grid;
@@ -568,14 +570,13 @@ watch(() => [props.mediaId, props.malId], load)
   font-weight: 650;
   color: var(--am-faint);
   background: var(--am-fill-1);
+  border: 1px solid var(--am-line-soft);
   border-radius: var(--am-r-cap);
   font-variant-numeric: tabular-nums;
 }
 
-/* ГАЛЕРЕЯ. Тот же приём, что у подбора и списка тем: затемнение, коробка по центру,
-   шапка на месте, ездит только середина. Имена классов общие с теми окнами (.am-sheet),
-   а правила свои: у каждого окна свой scoped-блок. Ширина 1080: в четыре столбца клетка
-   выходит в две с половиной сотни — видно, что на кадре. */
+/* ГАЛЕРЕЯ. Тот же приём, что у подбора и списка тем: затемнение, коробка по центру, ездит
+   только середина. Ширина 1080: в четыре столбца клетка выходит в две с половиной сотни. */
 .am-sheet {
   position: fixed;
   inset: 0;
@@ -729,7 +730,7 @@ watch(() => [props.mediaId, props.malId], load)
   transition: background-color var(--am-fast) var(--am-ease);
 }
 
-.am-look__step:hover,
+.am-look__step:hover:where(:not(.am-lite *)),
 .am-look__step:focus-visible {
   background: rgb(255 255 255 / 0.2);
 }
@@ -782,5 +783,14 @@ watch(() => [props.mediaId, props.malId], load)
   .am-sheet__box {
     animation: none;
   }
+}
+
+/* На AMOLED заливка подложек снимается, и клеткам кадров остаётся лишь рамка.
+   Пустая клетка и заглушка держат прозрачную кромку на всех темах: без неё
+   появление рамки между темами сдвигала бы соседние клетки. */
+:global([data-am-skin='amoled']) .am-shots__cell,
+:global([data-am-skin='amoled']) .am-shots__reel,
+:global([data-am-skin='amoled']) .am-shots__hold {
+  border-color: var(--am-line-soft);
 }
 </style>

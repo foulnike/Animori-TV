@@ -1,6 +1,8 @@
 // Управление пультом: фокус ходит по стрелкам сам — в WebView пространственная навигация отключена.
 // Цель ищется по геометрии, а не по порядку в разметке.
 
+import { hideStaleTip } from './tip'
+
 type Dir = 'left' | 'right' | 'up' | 'down'
 
 const DIRS: Record<string, Dir> = {
@@ -48,7 +50,9 @@ function candidates(scope: ParentNode): HTMLElement[] {
 
 /// Ближайший элемент в сторону `dir`. Два прохода: сперва с перекрытием по поперечной оси, затем любой в нужную
 /// сторону — без первого «вправо» с пункта меню уезжает на шапку, без второго фокус застревает у края полки.
-function nearest(from: HTMLElement, dir: Dir, items: HTMLElement[]): HTMLElement | null {
+/// `soft` добавляет третий, последний проход: в окне панель стоит колонкой, а верхние её строки узки — крестик
+/// в шапке по горизонтали с ними не перекрывается, и «вверх» пропадало нажатием в никуда.
+function nearest(from: HTMLElement, dir: Dir, items: HTMLElement[], soft = false): HTMLElement | null {
   const f = from.getBoundingClientRect()
   const horiz = dir === 'left' || dir === 'right'
   const sign = dir === 'right' || dir === 'down' ? 1 : -1
@@ -56,12 +60,16 @@ function nearest(from: HTMLElement, dir: Dir, items: HTMLElement[]): HTMLElement
   const fy = f.top + f.height / 2
   const fromSide = from.closest('.am-side') !== null
 
-  function walk(strict: boolean): HTMLElement | null {
+  function walk(strict: boolean, anywhere: boolean): HTMLElement | null {
     let best: HTMLElement | null = null
     let score = Infinity
 
     for (const el of items) {
       if (el === from) continue
+      // Запасная цель в ходьбе не участвует: это контейнер, а не кнопка, и его прямоугольник
+      // перекрывает всё содержимое окна — стоило ему обойтись по короткой дистанции, и фокус
+      // вставал на прямоугольник без подсветки. Человек смотрел на панель и не видел курсора.
+      if (el.hasAttribute(SEED)) continue
       const r = el.getBoundingClientRect()
       const along = sign * (horiz ? r.left + r.width / 2 - fx : r.top + r.height / 2 - fy)
       if (along <= 1) continue
@@ -77,7 +85,7 @@ function nearest(from: HTMLElement, dir: Dir, items: HTMLElement[]): HTMLElement
 
       if (strict) {
         if (overlap <= 0) continue
-      } else if (across > along) {
+      } else if (!anywhere && across > along) {
         // Кандидат должен лежать скорее в нужную сторону, чем вбок, иначе с края полки фокус улетает в шапку.
         continue
       }
@@ -91,7 +99,8 @@ function nearest(from: HTMLElement, dir: Dir, items: HTMLElement[]): HTMLElement
       if (!horiz && el.hasAttribute(BESIDE)) continue
 
       // Поперечное смещение штрафуем вдвое: «чуть дальше, но ровно в ряд» лучше, чем «ближе, но в стороне».
-      const value = along + across * 2
+      // В последнем проходе — вбок идти больше нечем, и зазор только добавляется к пути.
+      const value = along + across * (anywhere ? 1 : 2)
       if (value < score) {
         score = value
         best = el
@@ -101,7 +110,52 @@ function nearest(from: HTMLElement, dir: Dir, items: HTMLElement[]): HTMLElement
     return best
   }
 
-  return walk(true) ?? walk(false)
+  return walk(true, false) ?? walk(false, false) ?? (soft ? walk(false, true) : null)
+}
+
+/// Прыжок с полки на рельс встаёт на раздел, в котором человек уже находится. По геометрии вставал
+/// ближайший по высоте пункт, а он почти всегда соседний: прыжок влево молча уводил в другой раздел.
+/// Текущий раздел помечает разметка рельса классом `am-side__item--on`; `items` — те же цели, что и
+/// у остального обхода, поэтому невидимый или нефокусируемый пункт сюда не попадёт.
+function railActive(items: HTMLElement[]): HTMLElement | null {
+  const on = document.querySelector<HTMLElement>('.am-side__item--on')
+  if (on === null) return null
+
+  return items.indexOf(on) >= 0 ? on : null
+}
+
+/// Крайняя левая цель полки, куда встаёт фокус при прыжке между полками вверх-вниз. По геометрии
+/// выбирался ближайший по высоте, а он уводил в середину следующей полки: человек спускался на
+/// третью плитку и не видел, где остановился. Метку `[data-am-row]` носят и полки, и ряд отбора:
+/// в обоих случаях вход сверху или снизу идёт на самое левое — на кнопку фильтров, а не на чип.
+///
+/// Прыжок только между РАЗНЫМИ блоками. Внутри одного блока (вверх-вниз по строкам сетки ленты)
+/// сбрасывать нельзя: там человек идёт по соседней строке, и сброс уводил бы в левый угол сетки.
+/// Поэтому же и «Фильтры» с чипами — один блок: чипы уводят вверх-вниз по своей строке, а не в угол.
+function rowStart(from: HTMLElement, target: HTMLElement, items: HTMLElement[]): HTMLElement | null {
+  const row = target.closest<HTMLElement>(`[${ROW}]`)
+  if (row === null) return null
+  if (row === from.closest(`[${ROW}]`)) return null
+
+  let first: HTMLElement | null = null
+  let at = Infinity
+
+  for (const el of items) {
+    if (el.closest(`[${ROW}]`) !== row) continue
+    // По левому краю, а не по центру: у плитки-постера центр смещён одинаково, а у спутников
+    // (крестик витрины) — нет, и тот, кто ближе к центру, обошёл бы постера.
+    //
+    // Саму найденную цель из поиска не выбрасываем, и это не упущение: когда геометрия уже привела
+    // на крайний левый постер (прыжок из соседней полки по прямой над ним), сброс на «самый левый
+    // из остальных» уводил на второй — человек и видел второй постер вместо первого.
+    const left = el.getBoundingClientRect().left
+    if (left < at) {
+      at = left
+      first = el
+    }
+  }
+
+  return first
 }
 
 /// Верхнее из открытых окон; `null` — открытых окон нет. `offsetParent` не годится
@@ -120,9 +174,8 @@ function scope(): ParentNode {
   return topDialog() ?? document
 }
 
-/// Метка «плита со своей прокруткой»: за длинный текст пульту надо зацепиться, а не фокусируемый
-/// `div` до фокуса не доходит вовсе. Общего правила «у кого есть overflow, тот и крутится» мало:
-/// у текстового поля `scrollWidth` больше `clientWidth`, и стрелка вправо крутила бы его вместо перехода.
+/// Метка «плита со своей прокруткой»: за длинный текст пульту надо зацепиться, а `div` до фокуса
+/// не доходит. Правила «у кого есть overflow, тот и крутится» мало: у поля `scrollWidth` больше.
 const SCROLLER = 'data-am-scroll'
 
 /// Запас прокрутки самой плиты в сторону `dir`: ноль — крутить нечего, и стрелка уводит фокус.
@@ -139,9 +192,8 @@ function plateRoom(el: HTMLElement, dir: Dir): number {
   return dir === 'up' || dir === 'left' ? gone : span - gone
 }
 
-/// Толкает ближайшего прокручиваемого родителя в сторону `dir`: у конца ряда фокусу некуда идти, а за краем ещё есть
-/// плитки. `root` — граница окна: за ней прокрутка экрана, на котором окно открыто, и трогать её нельзя.
-/// Предка с `overflow` у страницы нет — её крутит окно, поэтому вторая ветка про окно.
+/// Толкает прокручиваемого родителя в сторону `dir`: у конца ряда фокусу некуда идти. `root` —
+/// граница окна: за ней прокрутка экрана, на котором окно открыто, и трогать её нельзя.
 function nudge(from: HTMLElement, dir: Dir, root: HTMLElement | null): boolean {
   const horiz = dir === 'left' || dir === 'right'
   const sign = dir === 'right' || dir === 'down' ? 1 : -1
@@ -212,10 +264,8 @@ function slide(box: HTMLElement, target: HTMLElement, horiz: boolean, center: bo
   })
 }
 
-/// Доводит фокус до середины кадра, а у вложенного списка — до середины самой плитки.
-/// `root` — граница окна. `scrollIntoView` обходит всех прокручиваемых предков: внутри окна он
-/// доходит и до экрана за ним, и тот уезжает под собственным окном. Поэтому окно доводим сами,
-/// по предкам до самой его границы, а `scrollIntoView` оставляем странице без окон.
+/// Доводит фокус до середины кадра, у списка — до середины плитки. `root` — граница окна.
+/// `scrollIntoView` обходит прокручиваемых предков и уводит экран под окном, окно доводим сами.
 function bringToFocus(target: HTMLElement, alongY: boolean, root: HTMLElement | null): void {
   const hold = target.closest<HTMLElement>('[data-hold]')
 
@@ -250,6 +300,35 @@ function markTile(el: HTMLElement): void {
   el.closest('.am-tile')?.classList.add('am-tile--key')
 }
 
+/// Ставит фокус на цель и доводит её до кадра, проверяя, что цель его приняла. `focus()` элемент вправе не принять:
+/// у поля это свежее соединение ввода, у кнопки — только что перерисованный узел. Без проверки нажатие пропадало
+/// молча — подсветки нет нигде, — и человек жал стрелку второй раз. Повтор один и по пустому фокусу: если фокус
+/// уже ушёл на другого (человек успел нажать ещё раз), спорить с ним нельзя.
+function seat(target: HTMLElement, alongY: boolean, root: HTMLElement | null): void {
+  target.focus({ preventScroll: true })
+  if (document.activeElement === target) {
+    // Фокус доводится до середины кадра по оси перехода, по другой оси остаётся `nearest`: центрировать обе
+    // сразу значит сдвигать кадр каждый шаг.
+    bringToFocus(target, alongY, root)
+    markTile(target)
+    return
+  }
+
+  window.setTimeout(function () {
+    if (document.activeElement !== document.body) return
+    if (!target.isConnected || !seen(target)) return
+
+    // Поле перевзводим через снятие фокуса: одного `focus()` мало — WebView не пересматривает уже
+    // установленное соединение ввода. Тот же приём, что по Enter.
+    target.blur()
+    target.focus({ preventScroll: true })
+    if (document.activeElement !== target) return
+
+    bringToFocus(target, alongY, root)
+    markTile(target)
+  }, 0)
+}
+
 /// Открыт ли экран просмотра. У плеера свой обход фокуса по зонам (player-input.ts), и два обхода
 /// на одно нажатие дают два шага: здесь уступаем плееру.
 function inPlayer(): boolean {
@@ -262,8 +341,40 @@ const HELD = 'data-am-held'
 /// Метка «кнопка подле цели»: маленькая кнопка при крупной соседке — правка в строке списка.
 const BESIDE = 'data-am-beside'
 
+/// Метка «запасная цель»: на неё сеют, когда в окне больше нечего, но по ней не ходят. Тело окна
+/// (`tabindex="0"`) — контейнер, а не цель: его прямоугольник перекрывает всю панель, и в `nearest()`
+/// он выигрывал у соседа по короткой дистанции, сажая фокус туда, где подсветки нет вовсе.
+const SEED = 'data-am-seed'
+
+/// Метка «крайняя цель окна»: крестик в шапке. Первым в разметке он идёт раньше панели, и посев
+/// по порядку разметки сажал фокус на выход, а не на действие: человек открывал окно и уходил.
+const LAST = 'data-am-last'
+
+/// Метка «первая цель экрана»: на неё садится фокус, когда приложение только что открыли и вёл бы
+/// его оболочка. Ставит её сегодняшний день календаря: приложение открывают ради «что выходит
+/// сегодня», а полоса дней стоит выше витрины. Именно «сегодня», а не показанный день: выбранным
+/// может быть любой, и возвращать человека туда, где он уже смотрел, — не то же, что к сегодняшнему.
+const FIRST = 'data-am-first'
+
+/// Метка «блок, в который входят слева». Переход вверх-вниз между такими блоками встаёт на самое
+/// левое место блока: на крайний левый постер полки, а в ряд отбора — на кнопку «Фильтры».
+/// Несут и полки, и сетка ленты: сетку тоже нужно встречать в её левом верхнем углу, а вот шаг
+/// по её строкам внутри решает геометрия (см. `rowStart` — он молчит внутри одного блока).
+const ROW = 'data-am-row'
+
+/// Запасные цели — мимо: ходить по ним нельзя, только сеять, когда больше нечего.
+function nonSeed(el: HTMLElement): boolean {
+  return !el.hasAttribute(SEED)
+}
+
+/// Поле, а не галочка: у `checkbox` и `radio` нашей блокировки быть не должно.
 function isText(el: unknown): el is HTMLInputElement | HTMLTextAreaElement {
-  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
+  if (el instanceof HTMLTextAreaElement) return true
+  // Галочка и переключатель — не поле: `readOnly` на них ни на что не влияет, а блокировка
+  // с последующим `blur()`/`focus()` по Enter срывала фокус с тумблера насовсем — пульт
+  // терялся, и человек уходил с панели. Тот же список, что в SettingsSheet.
+  if (el instanceof HTMLInputElement) return el.type !== 'checkbox' && el.type !== 'radio'
+  return false
 }
 
 /// Снимает нашу блокировку с поля: метку ставит подведение стрелкой, и без снятия поле осталось бы закрытым.
@@ -296,6 +407,35 @@ const SEED_TILE_WAIT = 2500
 
 let seedSince = 0
 
+/** С какой цели начинать обход содержимого экрана. Общая на весь посев: пустой фокус встречается
+ *  и по такту сторожа, и по первому нажатию, а цели у этих двух путей обязаны совпадать — иначе
+ *  фокус на первом нажатии вставал бы на первый элемент разметки (переключатель «Моё»), а через
+ *  такт сторожа уже прыгал бы на помеченный день. */
+function pageStart(items: HTMLElement[]): HTMLElement | null {
+  // На странице годится только содержимое: рельс идёт в разметке первым, и сев на него, посев вернул бы
+  // ровно то, от чего мы лечим. Внутри окна наоборот — его содержимое лежит вне `.am-view`.
+  const page = items.filter(function (el) {
+    return el.closest('.am-view') !== null
+  })
+
+  // Помеченный экраном первый элемент — главный ответ на «что выходит сегодня». Приоритет выше
+  // постера: приложение открывают ради календаря, и постер витрины — это уже прокрутка вниз.
+  // Помечает только Главная (сегодняшний день), на других экранах метки нет и всё как было.
+  const first = page.find(function (el) {
+    return el.hasAttribute(FIRST)
+  })
+
+  // Постер предпочтительнее: с трёх метров нужен крупный видимый выбор, а не мелкий переключатель над полкой.
+  // Плита мозаики настроек тоже годится: её цель уже на месте, и без этой строки вход
+  // в настройки держал бы фокус пустым, пока идёт ожидание постеров главной.
+  const tile =
+    page.find(function (el) {
+      return el.closest('.am-tile') !== null || el.closest('.am-door') !== null
+    }) ?? null
+
+  return first ?? tile ?? (page.length > 0 ? page[0] ?? null : null)
+}
+
 /// Ставит фокус на первый элемент содержимого: пока фокус ни на ком, стрелки ведёт оболочка и наше нажатие до обработчика не доходит.
 /// `wait` (сеять некуда) и `fail` (цель была, но фокус не приняла) различать нужно: пульт подключается до createApp().
 function seedDpad(): Seed {
@@ -303,24 +443,28 @@ function seedDpad(): Seed {
   const items = candidates(area)
   if (items.length === 0) return 'wait'
 
-  // На странице годится только содержимое: рельс идёт в разметке первым, и сев на него, посев вернул бы ровно
-  // то, от чего мы лечим. Внутри окна наоборот — его содержимое лежит вне `.am-view`.
-  const page = items.filter(function (el) {
-    return el.closest('.am-view') !== null
-  })
-  // Постер предпочтительнее: с трёх метров нужен крупный видимый выбор, а не мелкий переключатель над полкой.
-  const tile = page.find(function (el) {
-    return el.closest('.am-tile') !== null
-  }) ?? null
+  const inPage = pageStart(items)
+  if (inPage === null) return 'wait'
 
   // Постеры приезжают позже самого экрана: ждём их, но не бесконечно — на экране без плиток ждать нечего.
-  if (tile === null && page.length > 0 && area === document) {
+  // Помеченного первого ожидание не касается: полоса дней рисуется сразу, это календарь, а не данные,
+  // и ждать её нельзя — иначе первое нажатие ушло бы на первый элемент разметки.
+  const settled =
+    inPage.hasAttribute(FIRST) ||
+    inPage.closest('.am-tile') !== null ||
+    inPage.closest('.am-door') !== null
+  if (!settled && area === document) {
     if (seedSince === 0) seedSince = Date.now()
     if (Date.now() - seedSince < SEED_TILE_WAIT) return 'wait'
   }
 
-  const inPage = tile ?? (page.length > 0 ? page[0] ?? null : null)
-  const target = inPage ?? (area === document ? null : (items[0] ?? null))
+  // В окне первыми в разметке идут крестик шапки и контейнер-тело: и то и другое предлагает
+  // человеку не работу, а выход, причём у контейнера даже подсветки нет. Сначала берём содержимое
+  // панели, и только когда в ней пусто — кого-то из них.
+  const real = items.filter(function (el) {
+    return !el.hasAttribute(LAST) && nonSeed(el)
+  })
+  const target = inPage ?? (area === document ? null : (real[0] ?? items[0] ?? null))
   if (!target) return 'wait'
 
   if (isText(target) && !target.readOnly) {
@@ -342,11 +486,20 @@ function seedDpad(): Seed {
 /// и сторож пустого фокуса сеял бы заново, уводя человека к началу экрана. Помним последнего, кто был вне окна.
 let beforeDialog: HTMLElement | null = null
 
-function rememberOutside(e: FocusEvent): void {
+/// Кто держал фокус внутри окна последним. Кнопку могли убрать из разметки (`v-if` вопроса)
+/// или сделать неактивной (`disabled` на время работы), и фокусу осталось бы стать ни на чём —
+/// на экран под занавесом его не видно, и человек решает, что пульт пропал.
+let lastInDialog: HTMLElement | null = null
+
+function rememberFocus(e: FocusEvent): void {
   const el = e.target
   if (!(el instanceof HTMLElement)) return
   if (el === document.body) return
-  if (el.closest('[role="dialog"]') !== null) return
+
+  if (el.closest('[role="dialog"]') !== null) {
+    lastInDialog = el
+    return
+  }
   beforeDialog = el
 }
 
@@ -370,6 +523,32 @@ function backToBeforeDialog(): boolean {
   return true
 }
 
+/// Возврат фокуса внутрь открытого окна: к прежнему держателю, если он ещё годится, иначе
+/// к первому элементу окна. На экран под занавесом фокус не уводим — оттуда его не видно.
+function backToInsideDialog(): Seed {
+  const dialog = topDialog()
+  if (dialog === null) return 'wait'
+
+  const back = lastInDialog
+  if (
+    back !== null &&
+    back.isConnected &&
+    back.closest('[role="dialog"]') === dialog &&
+    !back.hasAttribute('disabled') &&
+    back.tabIndex >= 0 &&
+    seen(back)
+  ) {
+    back.focus({ preventScroll: true })
+    if (document.activeElement === back) {
+      markTile(back)
+      syncRail()
+      return 'ok'
+    }
+  }
+
+  return seedDpad()
+}
+
 /// Ставим фокус один раз на «без фокуса» состояние: следующая попытка случится на новом экране.
 let seedDone = false
 
@@ -383,6 +562,22 @@ function watchFocus(): void {
   if (now instanceof HTMLElement && now !== document.body) {
     seedDone = false
     seedTries = 0
+    return
+  }
+
+  // Окно открыто — фокус остаётся в нём: на экран под занавесом его не видно, и человек
+  // решает, что пульт пропал. Так фокус и теряется — кнопку убрали из разметки (`v-if`
+  // вопроса) или сделали неактивной (`disabled` на время работы), и стоять стало ни на чём.
+  if (topDialog() !== null) {
+    if (seedDone || seedTries >= 5) return
+
+    const back = backToInsideDialog()
+    if (back === 'ok') {
+      seedDone = true
+      seedTries = 0
+      return
+    }
+    if (back === 'fail') seedTries++
     return
   }
 
@@ -427,6 +622,10 @@ export function startDpad(): () => void {
     if (!dir) return
     if (e.metaKey || e.ctrlKey || e.altKey) return
 
+    // Пульт взял управление: плашка, притащенная припаркованным указателем на чужой
+    // элемент, пусть уходит вместе с первым направлением. Свою фокусную подпись не трогаем.
+    hideStaleTip()
+
     const now = document.activeElement
     if (now instanceof HTMLElement && now.closest('.am-pick')) return
 
@@ -452,18 +651,62 @@ export function startDpad(): () => void {
     const root = topDialog()
     const area: ParentNode = root ?? document
     const items = candidates(area)
-    if (items.length === 0) return
+    // Пусто — тоже отвечаем сами: отпущенная клавиша досталась бы оболочке WebView, и её
+    // пространственная навигация увела бы фокус куда угодно — за занавес окна или в рельс.
+    if (items.length === 0) {
+      e.preventDefault()
+      return
+    }
 
-    // Фокус ни на ком — экран только что открыли: берём первый элемент содержимого, а не разметки
-    // (рельс идёт первым).
+    // Фокус ни на ком — экран только что открыли, либо кнопку убрали из разметки. Берём первый
+    // элемент содержимого, а не разметки: рельс идёт первым, а в окне — крестик шапки, и оба
+    // предлагают человеку уйти, а не начать работу.
     let target: HTMLElement | null
     if (now instanceof HTMLElement && now !== document.body && items.indexOf(now) >= 0) {
       target = nearest(now, dir, items)
-    } else {
-      const inPage = items.find(function (el) {
-        return el.closest('.am-view') !== null
+
+      // Прыжок влево с полки встаёт на текущий раздел рельса, а не на ближайший по высоте пункт.
+      // Проверяем именно `dir === 'left'` и нахождение цели в рельсе: прыжок вправо из рельса и шаги
+      // внутри него (вверх-вниз по пунктам) идут обычным обходом — там соседний пункт и нужен.
+      if (dir === 'left' && target !== null && target.closest('.am-side') !== null) {
+        target = railActive(items) ?? target
+      }
+
+      // Переход между полками вверх-вниз — на крайнюю левую цель новой полки, а на чип по геометрии:
+      // зайти на ряд отбора и встать надо на «Фильтры», он самый левый. Внутри одного блока правило
+      // молчит само (см. `rowStart`), поэтому шаг по строкам сетки ленты остаётся геометрическим.
+      if (target !== null && (dir === 'up' || dir === 'down')) {
+        target = rowStart(now, target, items) ?? target
+      }
+
+      // Из окна наверх выход есть всегда, и это крестик шапки. Панель окна стоит колонкой, а верхние
+      // её строки узки (тумблер, список вида прокси): крестик в правом углу шапки по горизонтали с ними
+      // не перекрывается, геометрия соседа не находила, и «вверх» пропадало нажатием в никуда.
+      if (target === null && root !== null && dir === 'up') {
+        target =
+          items.find(function (el) {
+            return el !== now && el.hasAttribute(LAST)
+          }) ?? null
+      }
+
+      // Последний проход: в окне вбок идти больше нечем. Без него узкая строка посреди панели оставалась
+      // без ответа на стрелку вверх или вниз, и человек жал её второй раз.
+      if (target === null && root !== null && (dir === 'up' || dir === 'down')) {
+        target = nearest(now, dir, items, true)
+      }
+    } else if (root !== null) {
+      // Фокус в окне пуст — WebView его отпустил, панель перерисовалась. Сеем на первую живую
+      // цель и на этом останавливаемся: шагать дальше не от чего, и попытка «сдвинуть» фокус
+      // от `body` уводила его в дальний угол панели мимо всех кнопок.
+      const inside = items.filter(function (el) {
+        return !el.hasAttribute(LAST) && nonSeed(el)
       })
-      target = inPage ?? (items.length > 0 ? items[0] ?? null : null)
+      target = inside[0] ?? items[0] ?? null
+    } else {
+      // Фокус пуст — то же, что и посев: берём ту же цель, что и сторож, иначе первое нажатие
+      // вставало бы на первый элемент разметки (переключатель «Моё»), а через такт сторожа фокус
+      // уже прыгал бы на помеченный день. Человек видел бы курсор в двух разных местах подряд.
+      target = pageStart(items)
     }
     // Некуда — толкаем прокрутку сами. `preventDefault` обязателен даже когда прокручивать нечего:
     // отпущенное нажатие достаётся оболочке, а та водит фокус своим порядком и уводит его в рельс.
@@ -481,14 +724,7 @@ export function startDpad(): () => void {
     }
 
     e.preventDefault()
-    target.focus({ preventScroll: true })
-
-    // Фокус доводится до середины кадра по оси перехода, по другой оси остаётся `nearest`: центрировать обе
-    // сразу значит сдвигать кадр каждый шаг.
-    const alongY = dir === 'up' || dir === 'down'
-    bringToFocus(target, alongY, root)
-
-    markTile(target)
+    seat(target, dir === 'up' || dir === 'down', root)
     planRail()
   }
 
@@ -510,7 +746,7 @@ export function startDpad(): () => void {
 
   // `click` слушается отдельно: нажатие ОК уводит на другой экран, разметка перерисовывается, и `focusout` не приходит.
   document.addEventListener('focusin', planRail)
-  document.addEventListener('focusin', rememberOutside)
+  document.addEventListener('focusin', rememberFocus)
   document.addEventListener('focusout', onFocusOut)
   document.addEventListener('click', planRail)
   document.addEventListener('pointerdown', onPointerDown)
@@ -519,6 +755,7 @@ export function startDpad(): () => void {
     seedTries = 0
     seedSince = 0
     beforeDialog = null
+    lastInDialog = null
     planRail()
   })
 
@@ -526,7 +763,7 @@ export function startDpad(): () => void {
     window.clearInterval(watch)
     window.removeEventListener('keydown', onKey)
     document.removeEventListener('focusin', planRail)
-    document.removeEventListener('focusin', rememberOutside)
+    document.removeEventListener('focusin', rememberFocus)
     document.removeEventListener('focusout', onFocusOut)
     document.removeEventListener('click', planRail)
     document.removeEventListener('pointerdown', onPointerDown)

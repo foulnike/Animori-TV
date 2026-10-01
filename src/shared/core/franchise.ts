@@ -44,7 +44,7 @@ interface FranchiseMapEntry {
   idMal: number | null
   type: string | null
   isAdult: boolean
-  coverImage: { medium: string | null } | null
+  coverImage: { large?: string | null; medium?: string | null } | null
   /** Состояние выпуска: по нему выбирается запись, когда их несколько. */
   status: string | null
   startDate: { year: number | null; month: number | null; day: number | null } | null
@@ -63,7 +63,7 @@ query ($ids: [Int], $type: MediaType) {
       status
       startDate { year month day }
       title { romaji }
-      coverImage { medium }
+      coverImage { large medium }
     }
   }
 }`
@@ -71,9 +71,8 @@ query ($ids: [Int], $type: MediaType) {
 /** Знание этого запуска: дерево спрашивают карточка и полка одновременно. */
 const memory = new Map<number, FranchiseWork[] | null>()
 
-// Что различает записи одной части: хвост названия после общего начала.
-// Общее начало срезается, только если остаток начинается с разделителя:
-// у «Foo» и «Foobar» остаток «bar» ничего не различает — название остаётся целым.
+// Что различает записи одной части: хвост названия после общего начала. Общее начало срезается,
+// только если остаток начинается с разделителя: у «Foo» и «Foobar» хвост «bar» не различает.
 function stageTail(title: string, others: readonly string[]): string | null {
   let common = title
   for (const other of others) {
@@ -104,7 +103,11 @@ function isForeignNode(url: string): boolean {
 
 // Версия формы складской записи: правила сборки меняются, а склад бессрочный —
 // без метки записи прежней формы пережили бы правку.
-const FRANCHISE_SHAPE = 3
+// 3 → 4: обложка части стала `large` вместо `medium`. Без смены метки прежние записи
+// (обложки в 220×330) считались бы валидными, и полка осталась бы мыльной на весь срок
+// жизни склада — как раз то, на что жаловались: шапка брала `large` и была резкой,
+// а франшиза продолжала читать свой старый кэш с диска.
+const FRANCHISE_SHAPE = 4
 
 /** Читает дерево со склада. Записи старой формы считаются промахом, и проверяется
  *  каждая часть, а не первая: иначе старый склад с мангой в середине выживал бы. */
@@ -208,7 +211,10 @@ async function load(mediaId: number, malId: number): Promise<FranchiseWork[] | n
           year: typeof entryYear === 'number' && entryYear > 0 ? entryYear : nodeYear,
           date: typeof node.date === 'number' && node.date > 0 ? node.date : null,
           kind: node.kind ?? null,
-          cover: entry.coverImage?.medium ?? null,
+          // Обложка — `large`, как и везде в приложении (anilist-catalog, anilist-lookup). Одного
+          // `medium` (~220×330) не хватало: плитка полки на телевизоре — это сотни пикселей по
+          // стороне, и картинка растягивалась вдвое-втрое, читаясь мылом. `medium` остаётся запасным.
+          cover: entry.coverImage?.large ?? entry.coverImage?.medium ?? null,
           isAdult: entry.isAdult === true,
         },
         stamp: startStamp(entry.startDate),

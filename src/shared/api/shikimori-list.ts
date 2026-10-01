@@ -32,10 +32,7 @@ export interface ShikiImport {
   dated: number
 }
 
-/**
- * Закладки Шикимори в закладки AniList. Словарь, а не цепочка if: незнакомая
- * закладка должна дать null и попасть в журнал, а не превратиться в «смотрю».
- */
+/** Словарь, а не цепочка if: незнакомая закладка должна дать null, а не превратиться в «смотрю». */
 const STATUS_MAP: Readonly<Record<string, string>> = {
   planned: 'PLANNING',
   watching: 'CURRENT',
@@ -92,10 +89,7 @@ export function cleanNick(raw: string): string {
   return tail.startsWith('@') ? tail.slice(1) : tail
 }
 
-/**
- * Найти пользователя по нику: списки сервер отдаёт только по номеру, а ник меняется.
- * Отказы разведены по кодам: 404 — нет такого ника, 403 — профиль закрыт, 429 — подождать.
- */
+/** Пользователь по нику: списки сервер отдаёт только по номеру, а ник меняется. Отказы разведены по кодам. */
 export async function findShikiUser(nick: string): Promise<ShikiUser> {
   const wanted = cleanNick(nick)
   if (wanted === '') throw new Error('Ник не введён.')
@@ -168,10 +162,7 @@ function nameOf(rate: RateReply): string {
   return text(rate.anime?.russian) ?? text(rate.anime?.name) ?? `#${malIdOf(rate)}`
 }
 
-/**
- * День события в виде ГГГГ-ММ-ДД — в таком виде дата и живёт в записи.
- * Считается по местным суткам: через toISOString() дата уехала бы в UTC.
- */
+/** День события в виде ГГГГ-ММ-ДД. Считается по местным суткам: через toISOString() дата уехала бы в UTC. */
 function dayOf(ms: number): string {
   const date = new Date(ms)
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -181,12 +172,8 @@ function dayOf(ms: number): string {
 }
 
 /**
- * Читает список с Шикимори и переводит его в общий вид записи; в память ничего
- * не кладёт — слияние и замена дело ядра коллекции.
- *
- * Дат в закладках нет вовсе: они приезжают из журнала изменений
- * (`api/shikimori-history.ts`). Время создания закладки вместо них не подставляется —
- * это было бы число из воздуха в поле, которое человек примет за своё.
+ * Читает список и переводит его в общий вид записи; в память ничего не кладёт. Дат в
+ * закладках нет: они приезжают из журнала изменений, и время создания подставлять нельзя.
  */
 export async function importShikiList(nick: string): Promise<ShikiImport> {
   const user = await findShikiUser(nick)

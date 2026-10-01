@@ -1,7 +1,6 @@
 <script setup lang="ts">
 // Пункт 3.5: свой список одним экраном. Здесь остаётся отбор: закладка, слово, потолок и вид показа.
-// Правка записи идёт из списка: то же окно открывается поверх, запись берётся из памяти коллекции, а не из строки показа.
-// Метки доступности — по показу (склад целиком, чужие службы — о видимых плитках); в виде строками вопросов нет вовсе.
+// Правка записи идёт из списка: то же окно открывается поверх, запись берётся из памяти коллекции.
 
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
@@ -298,9 +297,8 @@ function closeEdit(): void {
   editId.value = 0
 }
 
-/** Кладёт одну правку в память и пересобирает показ. Синхронно и без сети, как с карточки:
- * облик здесь не нужен. Полная пересборка, а не правка строки: правка закладки выкидывает
- * запись из нынешнего отбора, правка оценки меняет порядок, а счётчики должны сойтись тут же. */
+/** Кладёт одну правку в память и пересобирает показ. Синхронно и без сети, как с карточки. Пересборка
+ * нужна потому, что правка закладки выкидывает запись из отбора, а правка оценки меняет порядок. */
 function sendEdit(kind: EntryEdit, value: string | number): void {
   if (editId.value === 0) return
 
@@ -315,6 +313,24 @@ function sendEdit(kind: EntryEdit, value: string | number): void {
 
 function onEditStatus(value: string): void {
   sendEdit('status', value)
+}
+
+/**
+ * Убрать тайтл из списка из окна правки: запись с её параметрами исчезает, и список с ней тоже.
+ * Удаление местное — на сервере AniList запись остаётся, как и при удалении всего списка.
+ */
+function onEditRemove(): void {
+  if (editId.value === 0) return
+
+  try {
+    editEntry(editId.value, 'remove', null)
+    editStamp.value += 1
+    redraw()
+  } catch (e) {
+    trouble.value = describe(e)
+  }
+
+  closeEdit()
 }
 
 function onEditScore(value: number): void {
@@ -555,6 +571,7 @@ onBeforeUnmount(() => {
       :notes="editRow.notes"
       @close="closeEdit"
       @status="onEditStatus"
+      @remove="onEditRemove"
       @score="onEditScore"
       @progress="onEditProgress"
       @repeat="onEditRepeat"
@@ -567,8 +584,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 /* Отбор одной стеклянной полосой: три капсулы в ряд без общего фона читались как три несвязанные
-   панели. position и z-index не украшение: backdrop-filter создаёт свой контекст наложения, и
-   выпадающий список порядка оставался внутри него — плитки сетки накрывали ролл-аут. */
+   панели. position и z-index не украшение: backdrop-filter создаёт свой контекст наложения. */
 .am-lists__top {
   position: relative;
   z-index: 5;
@@ -650,7 +666,7 @@ onBeforeUnmount(() => {
   transition: color var(--am-fast) var(--am-ease);
 }
 
-.am-find__wipe:hover {
+.am-find__wipe:hover:where(:not(.am-lite *)) {
   color: var(--am-text);
 }
 

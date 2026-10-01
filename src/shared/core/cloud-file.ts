@@ -1,5 +1,4 @@
 // Формат облачной копии списка: только сборка текста и разбор — ни сети, ни диска, ни моста.
-// Модуль чистый нарочно: облако — единственное место, где список покидает машину, цена ошибки — чужие записи.
 // Провайдер один (Яндекс Диск); пропуска входа в копию не попадают, лишние поля отбрасываются.
 
 import type { SnapshotEntry } from './snapshot'
@@ -10,17 +9,12 @@ export const CLOUD_DIR = 'AniMori'
 /** Имя файла копии: одно и то же у всех провайдеров и устройств. */
 export const CLOUD_FILE = 'animori-list.json'
 
-/**
- * Версия обёртки копии. Поднимать, когда меняются поля самой обёртки,
- * а не формы записей: за записи отвечает listVersion внутри файла.
- */
+/** Версия обёртки копии. Поднимать при смене полей обёртки, а не формы записей: за записи
+ * отвечает listVersion внутри файла. */
 export const CLOUD_FORMAT = 1
 
-/**
- * Потолок размера копии. Тот же, что у оболочки на запись файла
- * (src-tauri/src/files.rs и export.rs): отдавать провайдеру то, что своя же
- * оболочка обратно не примет, смысла нет.
- */
+/** Потолок размера копии. Тот же, что у оболочки (src-tauri/src/files.rs и export.rs):
+ * отдавать провайдеру то, что своя же оболочка обратно не примет, смысла нет. */
 const MAX_TEXT_BYTES = 8 * 1024 * 1024
 
 /** Длина метки устройства; метка нужна человеку, а не программе. */
@@ -30,10 +24,8 @@ const MAX_DEVICE = 60
 export interface CloudFile {
   /** Версия обёртки: CLOUD_FORMAT на момент записи. */
   format: number
-  /**
-   * Версия формы записей — SNAPSHOT_VERSION той сборки, что писала копию. Копию другой
-   * версии не читаем: миграций у снимка нет, а чужая форма тихо испортила бы список.
-   */
+  /** Версия формы записей — SNAPSHOT_VERSION той сборки, что писала копию. Чужая версия
+   * не читается: миграций у снимка нет, а форма испортила бы список. */
   listVersion: number
   savedAt: number
   /** Чем собрана: «Windows», «ТВ». Свободный текст, читает его человек. */
@@ -92,10 +84,8 @@ function isCloudEntry(value: unknown): value is SnapshotEntry {
   return typeof entry.mediaId === 'number' && Number.isFinite(entry.mediaId)
 }
 
-/**
- * Приводит запись к нынешней форме: поля перечислены явно, поэтому пропуск входа или чужое
- * поле в облако не уедут. Список полей обязан совпадать с normalizeEntry в core/snapshot.ts.
- */
+/** Приводит запись к нынешней форме: поля перечислены явно, поэтому пропуск входа или чужое
+ * поле в облако не уедут. Список полей обязан совпадать с normalizeEntry в snapshot.ts. */
 function cloudEntry(entry: SnapshotEntry): SnapshotEntry {
   return {
     mediaId: entry.mediaId,
@@ -122,10 +112,8 @@ function byMediaId(one: SnapshotEntry, two: SnapshotEntry): number {
   return one.mediaId - two.mediaId
 }
 
-/**
- * Собирает текст копии. Порядок записей закреплён, отступов нет: копию читает программа,
- * а пробелы на десяти тысячах записей — лишние сотни килобайт через чужую сеть.
- */
+/** Собирает текст копии. Порядок записей закреплён, отступов нет: копию читает программа, а
+ * пробелы на десяти тысячах записей — лишние сотни килобайт через чужую сеть. */
 export function buildCloudFile(input: CloudBuildInput): CloudBuildResult {
   const rows = input.entries.filter(isCloudEntry).map(cloudEntry)
   rows.sort(byMediaId)
@@ -149,14 +137,8 @@ export function buildCloudFile(input: CloudBuildInput): CloudBuildResult {
   return { text: body, bytes, file }
 }
 
-/**
- * Разбирает пришедший файл. Пустая копия — законный исход: пустым выглядит список, удалённый
- * осознанно. Сверять userId и решать, класть ли пустоту поверх живого списка, обязан вызывающий:
- * здесь проверяется форма, а не право.
- *
- * @param source Текст файла, как его отдал провайдер.
- * @param listVersion SNAPSHOT_VERSION нынешней сборки.
- */
+/** Разбирает файл. Пустая копия — законный исход: так выглядит список, удалённый осознанно.
+ * Сверять userId и класть ли пустоту поверх живого списка — дело вызывающего: здесь форма. */
 export function parseCloudFile(source: string, listVersion: number): CloudParseResult {
   if (typeof source !== 'string' || source.trim() === '') {
     return { ok: false, problem: 'Файл копии пуст' }

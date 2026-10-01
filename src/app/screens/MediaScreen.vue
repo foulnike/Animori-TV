@@ -1,11 +1,10 @@
 <script setup lang="ts">
-// Пункт 3.4: карточка аниме. Номер из адреса, подробности с сервера, состояние списка —
-// из памяти (она свежее чужого ответа). Разметка здесь, данные в media-card.ts, оформление
-// в media-screen.css. В шапке то, что читается за полсекунды: название, факты, действия,
-// оценки площадок и описание на широком окне. Плиток на доске три, любые могут не прийти.
+// Пункт 3.4: карточка аниме. Состояние списка берётся из памяти — она свежее чужого ответа. Данные
+// в media-card.ts, оформление в media-screen.css. Плиток на доске три, любая может не прийти.
 
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import AboutBox from '../components/AboutBox.vue'
 import BrandMark from '../components/BrandMark.vue'
 import EmptyMark from '../components/EmptyMark.vue'
 import EntrySheet from '../components/EntrySheet.vue'
@@ -21,6 +20,9 @@ import { scoreText, useMediaCard } from './media-card'
 
 const sheetOpen = ref(false)
 
+/** Открыто ли описание крупным планом: в плитке карточки текст идёт 11.5px. */
+const aboutOpen = ref(false)
+
 /** Какой знак сервиса ставить ярлычку оценки. Ключи приходят из media-card.ts, а имена
  * знаков — из BrandMark: словарь держит их вместе, чтобы разметка не знала ни о тех, ни о других. */
 const MARK_BRAND: Record<string, 'anilist' | 'shikimori' | 'myanimelist'> = {
@@ -32,10 +34,9 @@ const MARK_BRAND: Record<string, 'anilist' | 'shikimori' | 'myanimelist'> = {
 /** Граница «широкого окна»: та же, что у раскладки шапки в CSS. */
 const WIDE_AT = '(min-width: 1400px)'
 
-/** Широкое ли окно: от этого зависит, где живёт описание. На телевизоре описание в баннер
- * не переезжает никогда, даже если окно порог берёт (часть приставок отдаёт 1920 при dpr 1):
- * левая половина сужалась до 440, пилюли студий лезли в пять рядов, и баннер вырастал с 263
- * до 340 — съедал на треть кадра больше, чем экономил. */
+/** Широкое ли окно: от этого зависит, где живёт описание. На телевизоре описание в баннер не
+ * переезжает никогда: часть приставок отдаёт 1920 при dpr 1, и баннер вырастал с 263 до 340 —
+ * съедал на треть кадра больше, чем экономил. */
 const wide = ref(false)
 
 /// Слабая ли платформа: на ней описание остаётся панелью при любой ширине.
@@ -93,6 +94,7 @@ const {
   onPickStarted,
   onPickCompleted,
   onPickNotes,
+  onPickRemove,
 } = useMediaCard(mediaId)
 
 // Просмотр — отдельный экран со своим адресом, а не окно поверх карточки: его можно обновить.
@@ -103,6 +105,29 @@ function openPlayer(): void {
 /** Подсказка метки доступности. Слов на самой метке нет: там только знак. */
 function playHint(state: 'yes' | 'no' | null): string {
   return state === 'yes' ? 'Можно посмотреть' : 'Нет в каталоге'
+}
+
+/** Клик по описанию раскрывает его окном. Нажатие по ссылке или по спойлеру внутри разметки —
+ *  это их работа, а не «раскрыть»: такие пропускаем. */
+function onAboutHit(e: MouseEvent): void {
+  // Описания нет — плитка не цель: взведённое нажатием окно раскрылось бы само, когда текст придёт.
+  if (about.value === '') return
+
+  const spot = e.target
+  if (spot instanceof HTMLElement && spot.closest('a, button') !== null) return
+  aboutOpen.value = true
+}
+
+/** Пульт: на цели с ролью кнопки браузер сам не кликает — раскрытие зовём руками.
+ *  Ссылка в тексте и здесь остаётся ссылкой: её нажатие браузер разбирает сам. */
+function onAboutKey(e: KeyboardEvent): void {
+  if (e.key !== 'Enter' && e.key !== ' ') return
+  if (about.value === '') return
+
+  const spot = e.target
+  if (spot instanceof HTMLElement && spot.closest('a, button') !== null) return
+  e.preventDefault()
+  aboutOpen.value = true
 }
 
 onMounted(() => {
@@ -119,9 +144,10 @@ onBeforeUnmount(() => {
   watchWide = null
 })
 
-// Переход с карточки на карточку не пересобирает экран: грузим сами. Окно правки закрывается заодно.
+// Переход с карточки на карточку не пересобирает экран: грузим сами. Окна закрываются заодно.
 watch(mediaId, () => {
   sheetOpen.value = false
+  aboutOpen.value = false
   void load()
 })
 
@@ -284,9 +310,18 @@ watch(card, (now) => {
         <div class="am-board">
 <!-- На широком окне панели описания здесь нет: текст ушёл в шапку, а его место заняли виджеты. Обёртка сквозная. -->
           <div v-if="!wide" class="am-split__main">
-            <div class="am-panel am-about-box">
+            <div
+              class="am-panel am-about-box am-about__hit"
+              :role="about ? 'button' : undefined"
+              :tabindex="about ? 0 : undefined"
+              @click="onAboutHit"
+              @keydown="onAboutKey"
+            >
               <h3 class="am-h3">Описание</h3>
 <!-- Разметка источника живая: ссылки, спойлеры и начертания рисует компонент, а типографика .am-about на его корне. -->
+<!-- Текст раскрывается окном крупным планом: в плитке он идёт 11.5px, и с трёх метров его не читают.
+     Цель — вся плитка, а не абзац: кромка фокуса обходит её контур, а не строки текста (см. `__hit`).
+     Цель, а не кнопка: внутри разметка со ссылками, и ссылку внутри кнопки браузер разбирает по-своему. -->
               <RichText v-if="about" class="am-about" :text="about" />
               <div v-else-if="aboutWait" class="am-about__hold" aria-hidden="true">
                 <span class="am-skeleton am-about__hold-line" />
@@ -324,81 +359,86 @@ watch(card, (now) => {
 
 <!-- v-seen сообщает о первом показе плитки: источники видео спрашиваются только о показанных частях
      дерева, а склад поднимается по всей полке — он даром (app/see-tile.ts). -->
-<!-- data-hold: список прокручивается внутри плитки, и пульт обязан крутить его, а страницу —
-     доводить до середины самой плитки. Иначе обход центрировал бы каждую строку по экрану (dpad.ts). -->
-            <div ref="franList" class="am-rail" data-hold>
+<!-- Полка, а не вертикальный список: у франшизы на три десятка частей список требовал по нажатию на
+     часть, и до «Персонажей» внизу экрана доходили тридцать раз подряд. Ряд в одну строку доходит
+     туда за одно нажатие вниз, а сама франшиза обходится так же, как любая полка. Обход полки —
+     как на главной, без data-hold: тот центрировал бы каждую плитку и дёргал полку через одну. -->
+            <div ref="franList" class="am-rail am-cards am-fran__rail" data-am-row>
 <!-- Ключ по записи, а не по узлу Шикимори: у раздробленной части строк несколько, и все при одном номере MAL. -->
+<!-- Разметка карточки — ровно как у персонажей (`am-face`), правила общие, из theme.css. -->
               <article
                 v-for="work in franchiseRows"
                 :key="work.mediaId ?? work.malId ?? work.name"
                 v-seen="() => onPartSeen(work)"
-                class="am-part"
+                class="am-face"
               >
                 <button
                   v-if="work.mediaId !== null && work.mediaId !== mediaId"
                   v-tip="franchiseHint(work)"
-                  class="am-part__hit"
+                  class="am-face__hit"
                   type="button"
                   @click="openFranchiseWork(work)"
                 >
-                  <img
-                    v-if="work.cover"
-                    class="am-part__art"
-                    :src="work.cover"
-                    :alt="work.name"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  <span v-else class="am-part__art am-part__art--empty" aria-hidden="true">
-                    {{ work.name.slice(0, 1) }}
-                  </span>
-                  <span class="am-part__year">{{ work.year ?? '···' }}</span>
-                  <span class="am-part__name">{{ franchiseName(work) }}</span>
+                  <span class="am-face__frame">
+                    <img
+                      v-if="work.cover"
+                      class="am-face__art"
+                      :src="work.cover"
+                      :alt="work.name"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                    <span v-else class="am-face__art am-face__art--empty" aria-hidden="true">
+                      {{ work.name.slice(0, 1) }}
+                    </span>
 <!-- Молчание метки — это «не спрашивали», а не «нет»: пока источники не высказались все, ничего не рисуется. -->
-                  <span
-                    v-if="franchisePlay(work) !== null"
-                    v-tip="playHint(franchisePlay(work))"
-                    class="am-part__play"
-                    :class="{ 'am-part__play--none': franchisePlay(work) === 'no' }"
-                    role="img"
-                    :aria-label="playHint(franchisePlay(work))"
-                  />
-                  <span v-if="franchiseStatus(work)" class="am-part__status">
-                    {{ franchiseStatus(work) }}
+                    <span
+                      v-if="franchisePlay(work) !== null"
+                      v-tip="playHint(franchisePlay(work))"
+                      class="am-part__play"
+                      :class="{ 'am-part__play--none': franchisePlay(work) === 'no' }"
+                      role="img"
+                      :aria-label="playHint(franchisePlay(work))"
+                    />
+                    <span v-if="franchiseStatus(work)" class="am-face__role">
+                      {{ franchiseStatus(work) }}
+                    </span>
                   </span>
+                  <span class="am-face__name">{{ franchiseName(work) }}</span>
                 </button>
                 <div
                   v-else
                   v-tip="franchiseHint(work)"
-                  class="am-part__hit am-part__hit--still"
-                  :class="{ 'am-part__hit--here': work.mediaId === mediaId }"
+                  class="am-face__hit am-face__hit--still"
+                  :class="{ 'am-face__hit--here': work.mediaId === mediaId }"
                 >
-                  <img
-                    v-if="work.cover"
-                    class="am-part__art"
-                    :src="work.cover"
-                    :alt="work.name"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  <span v-else class="am-part__art am-part__art--empty" aria-hidden="true">
-                    {{ work.name.slice(0, 1) }}
+                  <span class="am-face__frame">
+                    <img
+                      v-if="work.cover"
+                      class="am-face__art"
+                      :src="work.cover"
+                      :alt="work.name"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                    <span v-else class="am-face__art am-face__art--empty" aria-hidden="true">
+                      {{ work.name.slice(0, 1) }}
+                    </span>
+                    <span
+                      v-if="franchisePlay(work) !== null"
+                      v-tip="playHint(franchisePlay(work))"
+                      class="am-part__play"
+                      :class="{ 'am-part__play--none': franchisePlay(work) === 'no' }"
+                      role="img"
+                      :aria-label="playHint(franchisePlay(work))"
+                    />
+                    <span class="am-face__role am-face__role--here">вы здесь</span>
                   </span>
-                  <span class="am-part__year">{{ work.year ?? '···' }}</span>
-                  <span class="am-part__name">{{ franchiseName(work) }}</span>
-                  <span
-                    v-if="franchisePlay(work) !== null"
-                    v-tip="playHint(franchisePlay(work))"
-                    class="am-part__play"
-                    :class="{ 'am-part__play--none': franchisePlay(work) === 'no' }"
-                    role="img"
-                    :aria-label="playHint(franchisePlay(work))"
-                  />
-                  <span v-if="work.mediaId === mediaId" class="am-part__here">вы здесь</span>
-                  <span v-else-if="franchiseStatus(work)" class="am-part__status">
-                    {{ franchiseStatus(work) }}
-                  </span>
+                  <span class="am-face__name">{{ franchiseName(work) }}</span>
                 </div>
+
+<!-- Год — второй подписью, как озвучка у персонажа: своё место под названием, а не строкой над ним. -->
+                <span class="am-face__voice">{{ work.year ?? '···' }}</span>
               </article>
             </div>
 
@@ -414,6 +454,9 @@ watch(card, (now) => {
 
 <!-- Музыка последней в странице и липнет к низу окна: под низом уже оставлено поле (padding у .am-view), в которое полоса и встаёт. -->
         <TuneBox :mal-id="card.malId" />
+
+<!-- Описание крупным планом: своё окно, а не второй вид той же плитки. -->
+        <AboutBox v-if="about" :open="aboutOpen" :text="about" @close="aboutOpen = false" />
 
 <!-- Признак онгоинга окну нужен для автозакладки: у идущего сезона потолок счёта — последняя
      вышедшая серия, и дошёдший до края счёт ещё не значит «просмотрено». -->
@@ -437,6 +480,7 @@ watch(card, (now) => {
           @started-at="onPickStarted"
           @completed-at="onPickCompleted"
           @notes="onPickNotes"
+          @remove="onPickRemove"
         />
       </template>
     </template>
@@ -448,14 +492,13 @@ watch(card, (now) => {
 <!-- Основное оформление живёт в media-screen.css. Здесь метка доступности, ярлычки оценок и
      новая раскладка доски: правила рядом с разметкой, которая их завела. -->
 <style scoped>
-/* Тот же знак, что на плитках, только мельче. Постер здесь — сама картинка, поэтому знак стоит строкой под ней. */
+/* Форма знака доступности: квадрат под треугольник. Цвет и тень — в media-screen.css, тут их быть не должно: знак лежит поверх обложки, и там решает общий слой. */
 .am-part__play {
   display: grid;
   place-items: center;
   align-self: center;
   width: 16px;
   height: 16px;
-  color: var(--am-accent);
 }
 
 /* clip-path, а не рамки: так треугольник остаётся ровно в центре квадрата и поверх него можно положить перечёркивание. */
@@ -466,11 +509,6 @@ watch(card, (now) => {
   content: '';
   background: currentcolor;
   clip-path: polygon(0 0, 100% 50%, 0 100%);
-}
-
-/* «Нет в каталоге»: тот же знак, но серый и перечёркнутый. Это отсутствие в нашем плеере, а не свойство аниме. */
-.am-part__play--none {
-  color: var(--am-dim);
 }
 
 .am-part__play--none::after {
@@ -524,7 +562,7 @@ watch(card, (now) => {
   transition: border-color var(--am-fast) var(--am-ease);
 }
 
-.am-hero__mark:hover {
+.am-hero__mark:hover:where(:not(.am-lite *)) {
   border-color: color-mix(in srgb, var(--am-warn) 52%, transparent);
 }
 
@@ -555,8 +593,7 @@ watch(card, (now) => {
 }
 
 /* Стекло гаснет ко всем трём краям блока, а не только влево: у блока ниже баннера размытие кончалось
-   прямой линией, и сверху и снизу оставались резкие незаблюренные полосы кадра. Масок две, пересечением:
-   одним градиентом не задать разную длину растворения по горизонтали и по вертикали. */
+   прямой линией, и сверху и снизу оставались резкие полосы кадра. Масок две, пересечением. */
 .am-hero--told .am-hero__note::before {
   -webkit-mask-image:
     linear-gradient(90deg, transparent 0%, #000 34%),
@@ -569,106 +606,18 @@ watch(card, (now) => {
 }
 
 /* Плитки доски берут свою высоту, а не тянутся по соседу: растянутая панель оставляет под содержимым
-   пустую полосу. `:deep` у кадров не для красоты: плитка кадров — чужой компонент с пятью корнями, и
-   Vue передаёт родительский признак области видимости только при одном корне — правило молча не совпадает. */
+   пустую полосу. `:deep` у кадров нужен потому, что плитка кадров — чужой компонент с пятью корнями. */
 .am-board > :deep(.am-shots),
 .am-board > .am-fran {
   align-self: start;
 }
 
-/* Рядом с кадрами франшиза тянется по ряду: высоту ряда задают кадры, и низы сходятся на любой ширине.
-   Прежде список держал ровно три строки, и высоты сходились только на широком окне — ряд кончался лесенкой.
-   `contain: size` — чтобы содержимое списка не участвовало в расчёте высоты ряда: без него ряд задавала бы
-   франшиза (семьсот пикселей против двухсот семидесяти у кадров). */
-.am-board:has(.am-shots) > .am-fran {
-  align-self: stretch;
-  contain: size;
-}
-
-/* Потолка у списка рядом с кадрами нет: высоту ему задаёт ряд. */
-.am-board:has(.am-shots) .am-fran .am-rail {
-  max-height: none;
-}
-
-/* Доска: ряд из двух равных колонок вместо плотного потока по измерению. После ухода записи и
-   оценок раскладывать осталось три плитки, и шаги сетки со скриптом-измерителем стали ценой без выгоды. */
+/* Доска — одна колонка: кадры, франшиза и персонажи идут полосами во всю ширину, как полки главной.
+   Две колонки оставляли франшизу в половине экрана, и её полка показывала четыре обложки в узкой
+   полосе — ряд читался сжатым рядом с широкой полкой персонажей под ним. */
 .am-board {
-/* Высота строки хронологии: миниатюра 32 пикселя при пропорции 2/3 плюс поля строки. Потолок плитки
-   считается строками, а не долей экрана: доля давала то три с половиной строки, то шесть. */
-  --am-fran-row: 58px;
-
-  grid-auto-flow: row;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: stretch;
-}
-
-/* Описание и люди — полосы во всю ширину: текст в половину доски читался столбиком, а ряд портретов вставал лестницей. */
-.am-board .am-about-box,
-.am-board .am-board__folk {
-  grid-column: 1 / -1;
-}
-
-/* Плитка-одиночка занимает всю ширину ряда: у половины тайтлов нет либо кадров, либо франшизы.
-   Проверяем наличие самих панелей, а не обёрток: виджет кадров сам решает, рисоваться ли ему. */
-.am-board:not(:has(.am-shots)) .am-fran {
-  grid-column: 1 / -1;
-}
-
-/* Кадры без франшизы растягиваются не сами, а через доску: колонка у доски остаётся одна, и плитка
-   занимает её целиком. Прежнее правило вешало `grid-column: 1 / -1` прямо на плитку, а плитка — чужой
-   компонент с пятью корнями, и родительского признака на ней нет: правило не совпадало ни с чем. */
-.am-board:not(:has(.am-fran)) {
   grid-template-columns: minmax(0, 1fr);
+  align-items: start;
 }
 
-/* Хронология в плитке-одиночке идёт мозаикой два на два: строки с одной миниатюрой во всю ширину
-   оставляли справа полосу пустоты. Сетка жёсткая в обеих осях: прежде строки росли по содержимому,
-   и третье наименование уходило в тот же ряд третьим столбцом — край плитки обрезал его пополам. */
-.am-board:not(:has(.am-shots)) .am-fran .am-rail {
-  display: grid;
-  grid-auto-flow: row;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: var(--am-fran-row);
-  gap: 2px 14px;
-  align-content: start;
-  max-height: calc(2 * var(--am-fran-row) + 2px);
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-/* Строка мозаики не должна вылезать за свой столбец: без обрезки длинное название растягивало столбец. */
-.am-board:not(:has(.am-shots)) .am-fran .am-rail .am-part {
-  min-width: 0;
-  overflow: hidden;
-}
-
-/* Список берёт высоту, которую дала строка, но не выше четырёх наименований: дальше прокрутка.
-   Прежний потолок долей экрана резал последнюю строку посередине и разнился от окна к окну. */
-.am-board .am-fran .am-rail {
-  flex: 1 1 auto;
-  min-height: 0;
-  max-height: calc(4 * var(--am-fran-row) + 6px);
-}
-
-/* Узкое окно — одна колонка: сетка кадров и строки франшизы в половине такой ширины уже не читаются. */
-@media (max-width: 1000px) {
-  .am-board {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-/* В одну колонку ряд у франшизы свой, и высоту ей не у кого взять: тянуться по соседу она может
-   только в паре с кадрами. Здесь и содержимое снова считаем, и потолок возвращаем строками — четыре. */
-  .am-board:has(.am-shots) > .am-fran {
-    contain: none;
-  }
-
-  .am-board:has(.am-shots) .am-fran .am-rail {
-    max-height: calc(4 * var(--am-fran-row) + 6px);
-  }
-
-  .am-board:not(:has(.am-shots)) .am-fran .am-rail {
-    display: flex;
-    max-height: calc(4 * var(--am-fran-row) + 6px);
-  }
-}
 </style>

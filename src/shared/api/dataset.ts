@@ -1,16 +1,11 @@
-// Загрузка датасета названий из выпусков animori-data: опись и два файла.
-// Только сеть и превращение байтов в данные: хранение и чтение — в core/dataset-names.ts.
-// Поля описи и файлов повторяют scripts/build-names.mjs репозитория данных.
+// Загрузка датасета названий из выпусков animori-data: только сеть и превращение байтов в данные,
+// хранение и чтение — в core/dataset-names.ts.
 
 import { Bridge } from '@/bridge'
 import { Logger } from '../utils/logger'
 import { githubLimiter } from './rate-limit'
 
-/**
- * Постоянный адрес файлов последнего выпуска: тег в нём не участвует,
- * latest на него ведёт сам GitHub. Зеркала нет: jsDelivr файлы выпусков
- * не раздаёт (docs/DATA.md).
- */
+/** Адрес файлов последнего выпуска: тег в нём не участвует, latest на него ведёт сам GitHub. */
 const RELEASE_BASE = 'https://github.com/foulnike/animori-data/releases/latest/download'
 
 /** Таймауты: опись крошечная, файлы — до полутора мегабайтов в сжатом виде. */
@@ -35,11 +30,8 @@ export interface DatasetIndex {
 }
 
 /**
- * Чем кончился вопрос об описи.
- *
- * Три исхода вместо прежнего `DatasetIndex | null` нужны ради одного
- * различения: «сервер сказал, что тот же выпуск» и «спросить не удалось» —
- * разные события, и второе не вправе сдвигать час следующей проверки.
+ * Три исхода вместо `DatasetIndex | null` ради одного различения: «тот же выпуск» и
+ * «спросить не удалось» — разные события, и второе не вправе сдвигать час следующей проверки.
  */
 export type DatasetIndexAnswer =
   /** Опись приехала и разобрана. `etag` пуст, если сервер его не дал. */
@@ -110,9 +102,8 @@ function parseIndex(raw: unknown): DatasetIndex | null {
 }
 
 /**
- * base64 обратно в байты: бинарные данные через мост ходят только так.
- * Явный ArrayBuffer в типе возврата: без него выводится ArrayBufferLike,
- * а digest() и Blob ниже принимают только ArrayBuffer.
+ * base64 обратно в байты: бинарные данные через мост ходят только так. Явный
+ * ArrayBuffer в типе возврата обязателен: digest() и Blob его не принимают.
  */
 function fromBase64(text: string): Uint8Array<ArrayBuffer> {
   const raw = atob(text)
@@ -136,15 +127,8 @@ async function gunzipText(packed: Uint8Array<ArrayBuffer>): Promise<string> {
 }
 
 /**
- * Опись последнего выпуска. Куки не нужны вовсе.
- *
- * Когда передан `knownEtag` с прошлой проверки, запрос идёт с If-None-Match:
- * выпуск публикуется раз в неделю, и почти все проверки должны заканчиваться
- * ответом без тела. Код 304 проверяется ДО `res.ok`: у него `ok` ложно,
- * и без отдельной ветки удачный исход читался бы как отказ.
- *
- * Собственного хранения отпечатка здесь нет и не будет: модуль сетевой,
- * а память между запусками живёт в core/dataset-names.ts вместе с датой сборки.
+ * Опись последнего выпуска. С `knownEtag` запрос идёт с If-None-Match, и почти все проверки
+ * заканчиваются ответом без тела. Код 304 проверяется ДО `res.ok`: у него `ok` ложно.
  */
 export async function fetchDatasetIndex(knownEtag?: string | null): Promise<DatasetIndexAnswer> {
   const url = `${RELEASE_BASE}/index.json`
@@ -184,8 +168,8 @@ export async function fetchDatasetIndex(knownEtag?: string | null): Promise<Data
 }
 
 /**
- * Файл выпуска распакованным или null при любой неудаче. Отпечаток сверяется
- * до распаковки: половина архива, разобранная в базу, хуже отсутствия архива.
+ * Файл выпуска распакованным или null: отпечаток сверяется до распаковки, половина архива
+ * хуже его отсутствия.
  */
 export async function fetchDatasetPayload(file: DatasetFileRef): Promise<unknown | null> {
   const url = `${RELEASE_BASE}/${file.name}`

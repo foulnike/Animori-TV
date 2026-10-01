@@ -441,10 +441,7 @@ async function loadPack(): Promise<ShelfPack> {
   return pack
 }
 
-/**
- * Сезон, тренд и лучшее одним походом. Со склада пачка отдаётся только целиком:
- * доля просрочена — идём в сеть за всеми тремя, потому что запрос всё равно один.
- */
+/** Сезон, тренд и лучшее одним походом: доля просрочена — идём в сеть за всеми тремя, запрос один. */
 export async function fetchShelfPack(): Promise<ShelfPack> {
   const stored = await readPack()
   if (stored) return stored
@@ -452,11 +449,7 @@ export async function fetchShelfPack(): Promise<ShelfPack> {
   return await once('shelf-pack', loadPack)
 }
 
-/**
- * Запрос страницы ленты под отбор. Объявление переменных собирается вместе с условием:
- * незанятая переменная — ошибка запроса целиком.
- * Год приходит границами нечёткой даты: у AniList это целое вида ГГГГММДД.
- */
+/** Год приходит границами нечёткой даты: у AniList это целое вида ГГГГММДД. */
 function feedQuery(pick: CatalogPick, page: number): { query: string; vars: Record<string, unknown> } {
   const decls = ['$page: Int!', '$perPage: Int!']
   const where = ['type: ANIME']
@@ -547,11 +540,7 @@ async function loadFeed(pick: CatalogPick, page: number, key: string): Promise<F
   return result
 }
 
-/**
- * Страница ленты подбора. Отказ сети наверх не поднимается: одна оборванная страница
- * не повод показывать ошибку вместо уже набранного. Страницы помнятся четверть часа
- * в памяти запуска, а не на складе: отборов и порядков бесконечно много.
- */
+/** Отказ сети наверх не поднимается: одна оборванная страница не повод показывать ошибку вместо набранного. */
 export async function fetchFeed(pick: CatalogPick, page: number): Promise<FeedPage> {
   const key = `${pickKey(pick)}|${page}`
 
@@ -595,11 +584,8 @@ async function loadTags(): Promise<CatalogTag[]> {
 }
 
 /**
- * Справочник тэгов каталога для меню отбора. Тэги-спойлеры выброшены: сам список
- * читается до открытия карточки, и «главный герой умирает» в меню — испорченное
- * аниме ещё до выбора. Взрослые остаются с меткой.
- *
- * Полторы тысячи строк не меняются неделями, поэтому справочник живёт на складе месяц.
+ * Тэги-спойлеры выброшены: список читается до открытия карточки, и «главный герой умирает»
+ * в меню — испорченное аниме ещё до выбора. Полторы тысячи строк живут на складе месяц.
  */
 export async function fetchTags(): Promise<CatalogTag[]> {
   if (tagsMemory) return tagsMemory
@@ -644,10 +630,7 @@ async function loadRecs(mediaId: number, key: string): Promise<ServerRec[]> {
   return found
 }
 
-/**
- * Советы сервера для семени «по мотивам». Мангу отсеивает разбор ответа.
- * Связи набираются голосами месяцами, так что сутки хранения ничего не портят.
- */
+/** Связи набираются голосами месяцами, так что сутки хранения ничего не портят. */
 export async function fetchRecsFor(mediaId: number): Promise<ServerRec[]> {
   const key = `${RECS_PREFIX}${mediaId}`
 
@@ -669,10 +652,7 @@ async function readGenres(mediaId: number): Promise<string[] | null> {
   return stored.data
 }
 
-/**
- * Жанры аниме пачками: профиль вкуса считается по любимым записям.
- * Спрашивается только то, чего нет на складе.
- */
+/** Профиль вкуса считается по любимым записям; спрашивается только то, чего нет на складе. */
 export async function fetchGenreMap(ids: number[]): Promise<Map<number, string[]>> {
   const found = new Map<number, string[]>()
   const unique = Array.from(new Set(ids.filter((id) => Number.isFinite(id) && id > 0)))

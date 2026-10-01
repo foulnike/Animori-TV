@@ -1,8 +1,6 @@
 <script setup lang="ts">
-// Подложка круглой кнопки: в покое круг, при наведении и фокусе — сакура. Не border-radius
-// (не умеет вогнутые впадины) и не clip-path (Chromium режет по нему попадание курсора и обводку
-// фокуса) — поэтому цветок отдельный слой с pointer-events: none. Лепесток сжат в 0.7038, иначе
-// соседние захлёстываются на 9°; прозрачность на корневом svg, иначе швы дают пятилучевую звезду.
+// Цветок отдельный слой с pointer-events: none: clip-path в Chromium режет по нему попадание
+// курсора и обводку фокуса. Лепесток сжат в 0.7038, иначе захлёстываются на 9°.
 
 import { SAKURA_PETAL as PETAL, SAKURA_TURNS as TURNS, sakuraTurn as petalTurn } from '../sakura'
 </script>
@@ -66,10 +64,8 @@ import { SAKURA_PETAL as PETAL, SAKURA_TURNS as TURNS, sakuraTurn as petalTurn }
     transform var(--am-mid) var(--am-ease);
 }
 
-/* Кромка фокуса: кнопка под цветком прямоугольная, и кольцо по её коробке резало лепестки.
-   Кромка — тот же путь лепестка, развёрнутый на 7 % и подложенный под цветок. 7 %: радиус лепестка
-   18 единиц в квадрате 32, на кнопке 44 px единица 1.375 px, отсюда 1.26 единицы ≈ 1.7 px.
-   Заливка, а не обводка (обводка сошлась бы в центре). В покое стянута: 0.62 * 1.07 = 0.6634. */
+/* Кромка фокуса: кольцо по коробке кнопки резало лепестки, поэтому кромка — путь лепестка,
+   развёрнутый на 7 % и подложенный под цветок. Заливка, а не обводка: та сошлась бы в центре. */
 .am-bloom__rim {
   fill: var(--am-accent);
   opacity: 0;
@@ -93,19 +89,19 @@ import { SAKURA_PETAL as PETAL, SAKURA_TURNS as TURNS, sakuraTurn as petalTurn }
 }
 
 /* Хозяин описан через :where, чтобы правило не перевешивало собственные стили кнопки: вес селектора остаётся как у одного класса. */
-:where(button, a, [role='button']):hover > .am-bloom .am-bloom__petals,
+:where(button, a, [role='button']):hover:where(:not(.am-lite *)) > .am-bloom .am-bloom__petals,
 :where(button, a, [role='button']):focus-visible > .am-bloom .am-bloom__petals {
   opacity: 1;
   transform: none;
 }
 
-:where(button, a, [role='button']):hover > .am-bloom .am-bloom__bud,
+:where(button, a, [role='button']):hover:where(:not(.am-lite *)) > .am-bloom .am-bloom__bud,
 :where(button, a, [role='button']):focus-visible > .am-bloom .am-bloom__bud {
   transform: scale(0.93);
 }
 
 /* Свечение розовым, а не заливка во всю силу: на чистом #f5b3c8 белый крестик даёт контраст 1.7:1 и исчезает. */
-:where(button, a, [role='button']):hover > .am-bloom,
+:where(button, a, [role='button']):hover:where(:not(.am-lite *)) > .am-bloom,
 :where(button, a, [role='button']):focus-visible > .am-bloom {
   filter: drop-shadow(var(--am-bloom-shade, 0 2px 5px var(--am-veil)))
     drop-shadow(0 0 9px rgb(var(--am-sakura-rgb) / 0.45));

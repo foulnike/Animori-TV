@@ -1,55 +1,14 @@
-// Пункт 4.3, правка по итогам первого живого запуска.
-//
-// Собственные команды приложения требуют разрешения в ACL Tauri. Без объявления
-// здесь такого разрешения вообще не существует, и вызов из JS падает с сообщением
-// "<имя> not allowed. Plugin not found" — именно так молчала кнопка перезагрузки.
-//
-// AppManifest::commands порождает разрешения с именами в kebab-case:
-//   animori_reload            -> allow-animori-reload
-//   animori_restart           -> allow-animori-restart
-//   animori_open_external     -> allow-animori-open-external
-//   animori_auth_start        -> allow-animori-auth-start
-//   animori_auth_submit       -> allow-animori-auth-submit
-//   animori_auth_status       -> allow-animori-auth-status
-//   animori_auth_logout       -> allow-animori-auth-logout
-//   animori_anilist_query     -> allow-animori-anilist-query
-//   animori_file_read         -> allow-animori-file-read
-//   animori_file_write        -> allow-animori-file-write
-//   animori_export_pick_dir   -> allow-animori-export-pick-dir
-//   animori_export_write      -> allow-animori-export-write
-//   animori_track_pick_dir    -> allow-animori-track-pick-dir
-//   animori_track_write       -> allow-animori-track-write
-//   animori_proxy_status      -> allow-animori-proxy-status
-//   animori_proxy_probe       -> allow-animori-proxy-probe
-//
-// Файл разрешений теперь один, потому что окно с правами осталось одно:
-//   capabilities/default.json — своё окно «main» на своей сборке.
-//
-// Окно входа (метка «login», пункт 2.2) прав не имеет вовсе, и файла capabilities
-// у него нет сознательно: там чужая форма с паролем, а пропуск возвращается
-// мимо разметки — в приёмник на 127.0.0.1. Для окна на внешнем адресе это тем
-// важнее: вызвать можно ровно то, что перечислено в разрешениях.
-//
-// Окно «site» с настоящим anilist.co, его capabilities/site.json и две команды под него
-// (animori_open_site и animori_page_ready) ушли вместе со старой реализацией десктопа.
-//
-// Правило на будущее: новая команда — три места.
-//   1) invoke_handler в src/lib.rs
-//   2) COMMANDS ниже
-//   3) permissions в capability того окна, которому команда нужна
-// Пропуск любого из трёх даёт тот же отказ на стороне JS.
+// Собственные команды требуют разрешения в ACL Tauri: без объявления здесь такого
+// нет, и JS падает с "Plugin not found". Места три: invoke_handler, COMMANDS, permissions.
 
 const COMMANDS: &[&str] = &[
     "animori_reload",
-    // Перезапуск приложения. Параметров нет и быть не может: команда ничего
-    // не настраивает, а повторяет запуск с тем, что уже лежит в настройках.
-    // Нужна прокси: ключи запуска WebView2 читаются один раз, при создании
-    // первого окна, и перезагрузка страницы новый адрес до движка не донесёт.
+    // Перезапуск приложения. Параметров нет и быть не может: команда лишь
+    // повторяет запуск. Нужна прокси: ключи запуска WebView2 читаются один раз.
     "animori_restart",
     "animori_open_external",
-    // Пункт 2.2: вход в AniList. Все четыре выданы только своему окну: окно входа
-    // ничего не вызывает, оно лишь показывает чужую форму, а пропуск приезжает
-    // в приёмник обычным запросом.
+    // Пункт 2.2: вход в AniList. Все четыре выданы только своему окну: оно лишь
+    // показывает чужую форму, а пропуск приезжает в приёмник обычным запросом.
     "animori_auth_start",
     "animori_auth_submit",
     "animori_auth_status",
@@ -63,31 +22,21 @@ const COMMANDS: &[&str] = &[
     "animori_file_write",
     // Пункт 3.3: выгрузка списка в папку, выбранную человеком. Окно выбора
     // открывает сам Rust: разрешение dialog разметке не выдано и не будет.
-    // Запись принимает папку из настроек и имя файла, и проверяет оба в export.rs.
     "animori_export_pick_dir",
     "animori_export_write",
-    // Загрузка темы с AnimeThemes отдельным файлом. Пара своя, а не переиспользованная:
-    // выгрузка списка спрашивает папку однажды и пишет текст, а трек спрашивает папку
-    // на каждое нажатие и пишет байты со своим списком расширений и своим пределом
-    // размера. Разделение оставляет проверки в export.rs строгими для обоих случаев.
+    // Загрузка темы с AnimeThemes отдельным файлом. Пара своя: выгрузка
+    // спрашивает папку однажды и пишет текст, трек — на каждое нажатие и байты.
     "animori_track_pick_dir",
     "animori_track_write",
-    // Пункт 5.3.6: диагностика прокси для карточки настроек. Обе только читают:
-    // status отдаёт снимок состояния, probe открывает TCP-соединение на адрес из
-    // файла настроек. Ни та, ни другая не принимают адрес параметром — иначе код
-    // в окне получил бы сканер портов местной сети чужими руками.
+    // Пункт 5.3.6: диагностика прокси. Обе только читают, и ни одна не принимает
+    // адрес параметром — иначе код в окне получил бы сканер портов чужими руками.
     "animori_proxy_status",
     "animori_proxy_probe",
 ];
 
 fn main() {
-    // Иконка окна попадает в EXE ресурсом Windows: tauri-build пишет в .rc
-    // строку `32512 ICON "icons/icon.ico"`, а компилятор ресурсов кладёт
-    // картинку внутрь исполняемого файла. Сам build.rs от содержимого .ico
-    // не зависит ничем, и без этого объявления Cargo не перезапустит его:
-    // смена одной картинки оставляла бы в EXE прежний ресурс, а собралось бы
-    // всё остальное. Замечено живьём: рельс показал новую сакуру, а системная
-    // иконка осталась старой.
+    // Иконка окна попадает в EXE ресурсом Windows: tauri-build пишет в .rc строку
+    // `32512 ICON "icons/icon.ico"`. Без rerun-if-changed смена картинки не пересоберёт EXE.
     println!("cargo:rerun-if-changed=icons/icon.ico");
 
     tauri_build::try_build(

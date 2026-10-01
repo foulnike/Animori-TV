@@ -1,14 +1,13 @@
 <script setup lang="ts">
-// Копия списка по ссылке. Из шести кнопок на приставке работает одна — «забрать по ссылке»:
-// пропуск под шесть десятков знаков пультом не набрать, а браузера нет. Ссылку делает компьютер,
-// здесь набирают только её хвост после последней косой. Порядок: сперва показать найденное,
-// потом предлагать положить поверх — замена вслепую по строке с пульта теряет список из-за опечатки.
+// Копия списка по ссылке. Из шести кнопок на приставке работает одна: пропуск под шестьдесят
+// знаков пультом не набрать. Порядок обязателен: сперва показать найденное, потом класть поверх.
 
 import { ref } from 'vue'
 
 import { linkInfo, pullByLink, type CloudLink } from '@/core/cloud'
 import type { PullMode } from '@/core/collection'
 
+import { restoreFocus } from '../focus-return'
 import BrandMark from './BrandMark.vue'
 import CloudHelp from './CloudHelp.vue'
 
@@ -42,6 +41,9 @@ function describe(e: unknown): string {
 /// Ошибки показываются рядом с кнопкой, а не глотаются: молчаливый catch
 /// здесь означал бы кнопку, которая не делает ничего и не говорит почему.
 async function cloudGuard(action: () => Promise<void>): Promise<void> {
+  // Держатель запоминается до busy: кнопка гаснет disabled и отдаёт фокус, а после работы
+  // обход оставил бы пульт на крестике окна — мимо строки с ответом.
+  const from = document.activeElement
   cloudBusy.value = true
   cloudError.value = ''
   try {
@@ -50,6 +52,7 @@ async function cloudGuard(action: () => Promise<void>): Promise<void> {
     cloudError.value = describe(e)
   } finally {
     cloudBusy.value = false
+    restoreFocus(from)
   }
 }
 

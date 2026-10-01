@@ -45,8 +45,7 @@ function label(part: RichPart): string {
 }
 
 /** Рисовать ли кусок ссылкой. Ссылка, ведущая только наружу, на телевизоре никуда не ведёт:
- * браузера нет, такой кусок остаётся текстом. Перекрёстные ссылки на тайтлы и людей остаются
- * ссылками — они ведут внутрь. `plain` снимает ссылки вовсе (описание человека). */
+ *  браузера нет. Перекрёстные ссылки ведут внутрь и остаются ссылками. */
 function linked(part: RichPart): part is RichPart & { kind: 'link' } {
   if (props.plain === true) return false
 
@@ -198,7 +197,7 @@ async function follow(aim: RichAim): Promise<void> {
   transition: color var(--am-fast) var(--am-ease);
 }
 
-.am-rich__link:hover,
+.am-rich__link:hover:where(:not(.am-lite *)),
 .am-rich__link:focus-visible {
   color: var(--am-accent);
 }
@@ -234,7 +233,7 @@ async function follow(aim: RichAim): Promise<void> {
     background-color var(--am-fast) var(--am-ease);
 }
 
-.am-rich__reveal:hover,
+.am-rich__reveal:hover:where(:not(.am-lite *)),
 .am-rich__reveal:focus-visible {
   color: var(--am-text);
   background: var(--am-hover);

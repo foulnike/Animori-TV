@@ -10,9 +10,22 @@ export interface MockBridgeHandle {
   calls: {
     http: Array<{ url: string; method?: string }>
     httpBytes: Array<{ url: string; method?: string }>
+    // Заголовки запросов лежат отдельно и параллельно http: добавление их в сам вызов
+    // ломает тесты, сравнивающие его целиком.
+    httpHeaders: Array<Record<string, string> | undefined>
     storageGet: string[]
     storageSet: Array<{ key: string; value: unknown }>
   }
+}
+
+/** Заголовки из заглушки: нужны etag описи и его проверка через If-None-Match. */
+function headersOf(payload: unknown): Record<string, string> {
+  if (typeof payload === 'object' && payload !== null && 'headers' in payload) {
+    const given = (payload as { headers: unknown }).headers
+    if (typeof given === 'object' && given !== null) return given as Record<string, string>
+  }
+
+  return {}
 }
 
 function textResponse(url: string, payload: unknown, status = 200) {
@@ -26,7 +39,7 @@ function textResponse(url: string, payload: unknown, status = 200) {
     status,
     statusText: status === 200 ? 'OK' : 'Failed',
     ok: status >= 200 && status < 300,
-    headers: {},
+    headers: headersOf(payload),
     text,
     url,
   }
@@ -55,6 +68,7 @@ export function createMockBridge(options: { filesAvailable?: boolean } = {}): Mo
     calls: {
       http: [],
       httpBytes: [],
+      httpHeaders: [],
       storageGet: [],
       storageSet: [],
     },
@@ -86,11 +100,13 @@ export function createMockBridge(options: { filesAvailable?: boolean } = {}): Mo
       http: {
         async request(request) {
           handle.calls.http.push({ url: request.url, method: request.method })
+          handle.calls.httpHeaders.push(request.headers)
           const response = httpResponses.get(request.url)
           return textResponse(request.url, response ?? {})
         },
         async requestBytes(request) {
           handle.calls.httpBytes.push({ url: request.url, method: request.method })
+          handle.calls.httpHeaders.push(request.headers)
           const bytes = byteResponses.get(request.url) ?? new Uint8Array()
           return bytesResponse(request.url, bytes)
         },

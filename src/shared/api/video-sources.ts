@@ -1,6 +1,5 @@
-// Реестр источников видео: единственное место, где перечислены резолверы, ядро знает только форму.
 // Порядок здесь — порядок перебора на экране: сначала открытый API, потом цепочки.
-// В метке доступности Aniliberty не участвует (вопроса о наличии у неё нет); у Kodik — presenceCost 'each'.
+// В метке доступности Aniliberty нет вопроса о наличии; у Kodik — presenceCost 'each'.
 
 import { registerVideoSource } from '../core/video'
 import { anilibertySource } from './aniliberty'

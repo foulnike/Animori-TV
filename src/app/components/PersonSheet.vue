@@ -1,8 +1,6 @@
 <script setup lang="ts">
-// Окошко персонажа или автора поверх интерфейса (пункт 3.9б). Русские имя и описание
-// докидываются фоном из person-title.ts, названия работ — из media-title.ts.
-// Сэйю открывается в том же окне со стеком назад. Человека может подменить слой
-// окошка (app/person-layer.ts), поэтому загрузка висит и на смене свойства.
+// Окошко персонажа или автора поверх интерфейса (пункт 3.9б). Слой окошка подменяем
+// (app/person-layer.ts), поэтому загрузка висит и на смене свойства.
 import { computed, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue'
 
 import {
@@ -102,9 +100,8 @@ function translateAllowed(): boolean {
   return current.value.kind === 'character' ? settings.translateCharacters : settings.translateStaff
 }
 
-/** Описание из загруженных данных: русское важнее английского. Пока русский
- * источник не ответил, чужой текст не показывается — иначе описание приезжает
- * английским и через секунду подменяется. Отказ источника ждать не заставляет. */
+/** Описание из загруженных данных: русское важнее английского. Пока русский источник
+ *  не ответил, чужой текст не показывается — иначе он приедет и подменится. */
 function rawDesc(): string {
   if (ruWait.value) return ''
   if (ruPerson.value?.description) return ruPerson.value.description
@@ -242,9 +239,8 @@ function onKey(e: KeyboardEvent): void {
   else emit('close')
 }
 
-/** Русские названия работ: полка приезжает латиницей, и это единственное место
- * окна, где название не по-русски. Сначала подставляется известное без сети
- * (датасет и склад имён), дальше пачки — поодиночке сожгли бы темп шикимори. */
+/** Русские названия работ: полка приезжает латиницей. Сначала подставляется известное
+ *  без сети (датасет и склад имён), дальше пачки — поодиночке сожгли бы темп. */
 async function beginWorkNames(mine: number, list: readonly StaffWork[]): Promise<void> {
   const ids = list.map((work) => work.mediaId)
 
@@ -267,9 +263,8 @@ async function beginWorkNames(mine: number, list: readonly StaffWork[]): Promise
   }
 }
 
-/** Русские имя и описание: окно их не держит, докидываются по готовности. Гарда
- * тёзок тут не нужна — пара имя + кандзи даёт точный балл. Главному лицу
- * спрашивается полная карточка: имя из списка ролей добирает описание. */
+/** Русские имя и описание: окно их не держит, докидываются по готовности. Гарда тёзок
+ *  не нужна — пара имя + кандзи даёт точный балл. */
 async function beginRussian(mine: number, target: PersonTarget): Promise<void> {
   if (translateAllowed()) {
 // Ответ раскладывается по двум признакам: карточку можно показать и при недоезде
@@ -706,8 +701,7 @@ onBeforeUnmount(() => {
 }
 
 /* Цель нажатия в 44 пикселя. Круг и сакуру под курсором рисует вложенный слой,
-   а кнопка остаётся прямоугольной — так при ней остаются и попадание по всей цели,
-   и кольцо фокуса. Оттенки цветка и тень берутся от --am-hover и --am-sh-1. */
+   а кнопка остаётся прямоугольной — при ней остаются попадание и кольцо фокуса. */
 .am-sheet__close {
   --am-bloom-deep: var(--am-hover);
   --am-bloom-petal: color-mix(in srgb, var(--am-sakura) 30%, var(--am-hover));
@@ -733,7 +727,7 @@ onBeforeUnmount(() => {
   transition: color var(--am-fast) var(--am-ease);
 }
 
-.am-sheet__close:hover,
+.am-sheet__close:hover:where(:not(.am-lite *)),
 .am-sheet__close:focus-visible {
   color: var(--am-text);
 }
@@ -745,7 +739,7 @@ onBeforeUnmount(() => {
   transition: transform var(--am-fast) var(--am-ease);
 }
 
-.am-sheet__close:hover > span,
+.am-sheet__close:hover:where(:not(.am-lite *)) > span,
 .am-sheet__close:focus-visible > span {
   transform: translateY(-1px);
 }
@@ -772,7 +766,7 @@ onBeforeUnmount(() => {
     border-color var(--am-fast) var(--am-ease);
 }
 
-.am-ps-back:hover,
+.am-ps-back:hover:where(:not(.am-lite *)),
 .am-ps-back:focus-visible {
   color: var(--am-text);
   background: var(--am-hover);
@@ -792,7 +786,7 @@ onBeforeUnmount(() => {
   transition: transform var(--am-fast) var(--am-ease);
 }
 
-.am-ps-back:hover .am-ps-back__sign,
+.am-ps-back:hover:where(:not(.am-lite *)) .am-ps-back__sign,
 .am-ps-back:focus-visible .am-ps-back__sign {
   transform: translateX(-2px);
 }
@@ -895,7 +889,7 @@ onBeforeUnmount(() => {
     border-color var(--am-fast) var(--am-ease);
 }
 
-.am-ps-tab:hover {
+.am-ps-tab:hover:where(:not(.am-lite *)) {
   color: var(--am-text);
   background: var(--am-fill-2);
 }
@@ -906,9 +900,8 @@ onBeforeUnmount(() => {
   border-color: rgb(var(--am-accent-rgb) / 0.55);
 }
 
-/* Описание — плита со своей прокруткой и сама цель для пульта: текст, не влезающий в кадр,
-   должен листаться, а листать нечем, если за него нельзя зацепиться. Предел по высоте тела:
-   короткое описание не растягивается в пустую простыню. */
+/* Описание — плита со своей прокруткой и сама цель для пульта: текст, не влезающий
+   в кадр, должен листаться, а листать нечем, если за него нельзя зацепиться. */
 .am-ps-desc {
   flex: 0 1 auto;
   min-height: 0;
@@ -925,8 +918,7 @@ onBeforeUnmount(() => {
 }
 
 /* Работы сеткой, а не рельсой: в окне рельса обрезалась по правому краю, и листать её
-   приходилось отдельной прокруткой внутри прокручиваемого тела. Сеткой пульт ходит по
-   рядам, а лишние ряды доводятся фокусом. */
+   приходилось отдельной прокруткой внутри прокручиваемого тела. Сеткой пульт ходит по рядам. */
 /* Отступ сверху — под отклик постера: он берёт два пикселя вверх, а тело окна обрезает
    прокручиваемое содержимое, и верхний ряд терял эти два пикселя. */
 .am-ps-works {
@@ -970,7 +962,7 @@ onBeforeUnmount(() => {
   color: var(--am-faint);
 }
 
-.am-ps-work:hover .am-ps-work__art,
+.am-ps-work:hover:where(:not(.am-lite *)) .am-ps-work__art,
 .am-ps-work:focus-visible .am-ps-work__art {
   border-color: rgb(var(--am-accent-rgb) / 0.55);
   transform: translateY(-2px);
@@ -1031,14 +1023,14 @@ onBeforeUnmount(() => {
     transform var(--am-fast) var(--am-ease);
 }
 
-.am-ps-va:hover,
+.am-ps-va:hover:where(:not(.am-lite *)),
 .am-ps-va:focus-visible {
   background: var(--am-hover);
   border-color: rgb(var(--am-accent-rgb) / 0.45);
   transform: translateY(-1px);
 }
 
-.am-ps-va:hover .am-ps-va__name {
+.am-ps-va:hover:where(:not(.am-lite *)) .am-ps-va__name {
   color: var(--am-accent);
 }
 
@@ -1085,7 +1077,7 @@ onBeforeUnmount(() => {
     transform var(--am-fast) var(--am-ease);
 }
 
-.am-ps-va:hover .am-ps-va__go,
+.am-ps-va:hover:where(:not(.am-lite *)) .am-ps-va__go,
 .am-ps-va:focus-visible .am-ps-va__go {
   color: var(--am-accent);
   background: var(--am-accent-soft);
@@ -1152,8 +1144,7 @@ onBeforeUnmount(() => {
 }
 
 /* ТЕЛЕВИЗОР У пульта нет ни креста в углу, ни Escape, а стрелки из окна уводили фокус
-   на страницу под ним (окно на position: fixed, и dpad не определял его область).
-   Здесь только размер: окно шире и ниже, портрет и постеры мельче. */
+   на страницу под ним: dpad не определяет область окна на position: fixed. */
 .am-sheet--tv .am-sheet__box {
   gap: 12px;
   max-width: min(1000px, 94vw);
@@ -1211,15 +1202,15 @@ onBeforeUnmount(() => {
     animation: none;
   }
 
-  .am-sheet__close:hover > span,
+  .am-sheet__close:hover:where(:not(.am-lite *)) > span,
   .am-sheet__close:focus-visible > span,
-  .am-ps-back:hover .am-ps-back__sign,
+  .am-ps-back:hover:where(:not(.am-lite *)) .am-ps-back__sign,
   .am-ps-back:focus-visible .am-ps-back__sign,
-  .am-ps-work:hover .am-ps-work__art,
+  .am-ps-work:hover:where(:not(.am-lite *)) .am-ps-work__art,
   .am-ps-work:focus-visible .am-ps-work__art,
-  .am-ps-va:hover,
+  .am-ps-va:hover:where(:not(.am-lite *)),
   .am-ps-va:focus-visible,
-  .am-ps-va:hover .am-ps-va__go,
+  .am-ps-va:hover:where(:not(.am-lite *)) .am-ps-va__go,
   .am-ps-va:focus-visible .am-ps-va__go {
     transform: none;
   }

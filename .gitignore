@@ -6,6 +6,9 @@ node_modules/
 dist/
 dist-tauri/
 *.local
+# Сборка и подпись APK вне dist: конвейер пишет сюда ключ и промежуточные файлы.
+out/
+coverage/
 
 # Tauri (Этап 4)
 src-tauri/target/
@@ -26,6 +29,12 @@ src-tauri/gen/android/.gradle/
 src-tauri/gen/android/build/
 src-tauri/gen/android/app/build/
 src-tauri/gen/android/app/src/main/jniLibs/
+
+# Бандл фронтенда внутри Android-дерева. Это вывод `npm run build:app`, который
+# tauri android build кладёт рядом с исходниками, и восстанавливается каждой
+# сборкой: в именах файлов хеши содержимого, поэтому в индексе они и лежали
+# мёртвым грузом на киломбайт. Источник правды — dist/app, а он под dist/.
+src-tauri/gen/android/app/src/main/assets/
 
 # Логи
 *.log
@@ -55,3 +64,21 @@ Thumbs.db
 .env.*
 !.env.example
 *.key
+# Ключ подписи Android. Эталонный лежит в ~/.android/, но apksigner и
+# gradle подписывают откуда угодно, а gradle читает keystore.properties
+# из корня, если он там есть.
+*.jks
+*.keystore
+keystore.properties
+
+# Локальные артефакты сборки в корне. Подписанный APK — следы нашей сборки,
+# а не исходники: в репозиторий попадают только файлы из конвейера. `.idsig`
+# apksigner кладёт рядом с APK (подпись 4-й схемы, для adb install --incremental),
+# на приставку он не нужен.
+*.apk
+*.idsig
+*.aab
+
+# Python-мусор (вспомогательные скрипты в корне)
+__pycache__/
+*.pyc

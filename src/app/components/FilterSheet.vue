@@ -1,7 +1,6 @@
 <script setup lang="ts">
-// Меню отбора подбора для главной: жанры, годы, форматы, порядок, тэги.
-// Правит черновик и отдаёт его одним «Готово»: иначе каждое нажатие чипа било бы в сеть.
-// Тэги в конце, группы закрыты (справочник — под тысячу тэгов); взрослого нет и среди кнопок — отбор через core/adult.
+// Меню отбора подбора для главной: жанры, годы, форматы, порядок, тэги. Правит черновик и
+// отдаёт его одним «Готово»: иначе каждое нажатие чипа било бы в сеть. Взрослого нет.
 
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
@@ -664,8 +663,7 @@ onBeforeUnmount(() => {
 }
 
 /* Цель нажатия в 44 пикселя. Круг и сакуру под курсором рисует вложенный слой,
-   а кнопка остаётся прямоугольной — так при ней остаются и попадание по всей цели,
-   и кольцо фокуса. Оттенки цветка и тень берутся от --am-hover и --am-sh-1. */
+   а кнопка остаётся прямоугольной — при ней остаются попадание и кольцо фокуса. */
 .am-sheet__close {
   --am-bloom-deep: var(--am-hover);
   --am-bloom-petal: color-mix(in srgb, var(--am-sakura) 30%, var(--am-hover));
@@ -691,7 +689,7 @@ onBeforeUnmount(() => {
   transition: color var(--am-fast) var(--am-ease);
 }
 
-.am-sheet__close:hover,
+.am-sheet__close:hover:where(:not(.am-lite *)),
 .am-sheet__close:focus-visible {
   color: var(--am-text);
 }
@@ -703,7 +701,7 @@ onBeforeUnmount(() => {
   transition: transform var(--am-fast) var(--am-ease);
 }
 
-.am-sheet__close:hover > span,
+.am-sheet__close:hover:where(:not(.am-lite *)) > span,
 .am-sheet__close:focus-visible > span {
   transform: translateY(-1px);
 }
@@ -785,9 +783,8 @@ onBeforeUnmount(() => {
   background: none;
   border: 0;
 
-/* Скругление строке нужно ради кромки фокуса: форму рисует раскладушка — скруглённая
-   коробка с рамкой и обрезкой, — и прямоугольная кромка строки обрезалась бы внутри.
-   Раскрытой нижние углы срезаем, иначе кромка шла бы по всей шапке вместе с полкой чипов. */
+/* Скругление строке нужно ради кромки фокуса: форму рисует раскладушка, и
+   прямоугольная кромка строки обрезалась бы внутри. */
   border-radius: calc(var(--am-r-m) - 1px);
   transition: background-color var(--am-fast) var(--am-ease);
 }
@@ -796,7 +793,7 @@ onBeforeUnmount(() => {
   border-radius: calc(var(--am-r-m) - 1px) calc(var(--am-r-m) - 1px) 0 0;
 }
 
-.am-fold__hit:hover {
+.am-fold__hit:hover:where(:not(.am-lite *)) {
   background: var(--am-hover);
 }
 
@@ -828,7 +825,7 @@ onBeforeUnmount(() => {
     transform var(--am-mid) var(--am-ease);
 }
 
-.am-fold__hit:hover .am-fold__arrow {
+.am-fold__hit:hover:where(:not(.am-lite *)) .am-fold__arrow {
   color: var(--am-text);
 }
 
@@ -864,9 +861,8 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 
-/* Свой счётчик вместо родного: «−» и «+» стоят по бокам поля и в обходе пульта — это единственный
-   способ двинуть год, не поднимая клавиатуру. Вверх и вниз год не двигают: этими стрелками пульт
-   проходит сквозь поле к соседям, и шаг на проходе был побочным действием. */
+/* Свой счётчик вместо родного: «−» и «+» по бокам поля — единственный способ двинуть
+   год, не поднимая клавиатуру. Вверх и вниз год не двигают: пульт идёт сквозь поле. */
 .am-year {
   display: flex;
   gap: 6px;
@@ -895,7 +891,7 @@ onBeforeUnmount(() => {
     background-color var(--am-fast) var(--am-ease);
 }
 
-.am-year__step:hover {
+.am-year__step:hover:where(:not(.am-lite *)) {
   color: var(--am-text);
   background: var(--am-fill-2);
 }
@@ -937,7 +933,7 @@ onBeforeUnmount(() => {
     animation: none;
   }
 
-  .am-sheet__close:hover > span,
+  .am-sheet__close:hover:where(:not(.am-lite *)) > span,
   .am-sheet__close:focus-visible > span {
     transform: none;
   }

@@ -24,11 +24,7 @@ const SITE_BASE = 'https://anilibria.top'
 export const NET_SOURCE_ANILIBERTY = 'aniliberty'
 export const NET_LABEL_ANILIBERTY = 'AniLiberty'
 
-/**
- * Пауза ограничителю после 429. Джиттер разводит одновременные карточки. Повтора
- * после паузы здесь нет: повторами распоряжается вызывающий — плеер переспросит
- * следующим названием.
- */
+/** Повтора после паузы здесь нет: повторами распоряжается вызывающий — плеер спросит следующим тайтлом. */
 const RATE_PAUSE_MS = 1500
 const REQUEST_TIMEOUT_MS = 10000
 
@@ -280,10 +276,7 @@ function playableEpisodes(release: AniRelease | null): AniEpisode[] {
   )
 }
 
-/**
- * Источник целиком. В реестр он попадает из api/video-sources.ts, а не отсюда.
- * askPresence не объявлен намеренно: метку доступности такой источник не спрашивает.
- */
+/** askPresence не объявлен намеренно: метку доступности такой источник не спрашивает. */
 export const anilibertySource: VideoSource = {
   id: 'aniliberty',
   label: NET_LABEL_ANILIBERTY,

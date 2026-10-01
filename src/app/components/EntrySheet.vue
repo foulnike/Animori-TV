@@ -1,23 +1,26 @@
 <script setup lang="ts">
-// Пункт 3.9а: окно правки записи списка. Держит только черновик; хранение и сеть —
-// дело памяти списка. Окно телепортируется в body: предки с трансформом и размытием
-// забирают отсчёт у fixed. Правки идут черновиком, наружу уходит только «Готово»;
-// дойдя до потолка серий, закладка сама становится «Просмотрено» (у онгоинга потолок —
-// вышедшее, а не итог). «Готово» на миг отвечает «Сохранено» — иначе не понять, записалось ли.
+// Пункт 3.9а: окно правки записи. Держит черновик, наружу — «Готово». Окно телепортируется
+// в body: fixed мерился бы от предка. Потолок счёта у онгоинга — вышедшее, а не итог.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { pushBackStop } from '../back-stop'
 import { partsWord, statusList, statusWord } from '../labels'
 import { isWeakPlatform } from '../platform'
 
-import DatePick from './DatePick.vue'
+import DateField from './DateField.vue'
 import SakuraBloom from './SakuraBloom.vue'
+import StarBloom from './StarBloom.vue'
 
 /** Шаг оценки. Десятибалльная шкала у AniList дробная, половины достаточно. */
 const SCORE_STEP = 0.5
 
 /** Сколько кнопка «Готово» держит подтверждение, прежде чем закрыть шторку. */
 const SAVE_HOLD = 900
+
+/** Сколько держится взведённая кнопка удаления, прежде чем разоружится. Тот же приём,
+ *  что у очистки истории на своём экране: нажатие с пульта легко задеть, а убрать запись
+ *  вместе с заметкой и оценкой — необратимо. */
+const REMOVE_ARM_MS = 5000
 
 /** Быстрые оценки одним нажатием: целые баллы шкалы. */
 const QUICK_MARKS: ReadonlyArray<number> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -51,13 +54,14 @@ const emit = defineEmits<{
   (e: 'startedAt', value: string): void
   (e: 'completedAt', value: string): void
   (e: 'notes', value: string): void
+  (e: 'remove'): void
 }>()
 
 const statuses = statusList()
 const partsName = partsWord()
 
 // Черновик записи: правится только он, наружу уходит по «Готово». Даты держатся
-// строкой, а не string | null: пустая строка у DatePick — законный ответ «даты нет».
+// строкой, а не string | null: пустая строка у DateField — законный ответ «даты нет».
 const pickStatus = ref(props.status)
 const pickScore = ref(props.score10)
 const pickProgress = ref(props.progress)
@@ -91,6 +95,10 @@ let lastSent = props.notes ?? ''
 
 const saved = ref(false)
 let hold: number | null = null
+
+/** Убрать взведено: второе нажатие убирает запись, первое только спрашивает. */
+const removing = ref(false)
+let armTimer = 0
 
 // Значение сверху могло измениться: подхватываем, но не затираем набранное.
 watch(
@@ -128,8 +136,7 @@ function setScore(value: number): void {
 }
 
 /** Закладка и дата конца по достижении потолка счёта. Дату ставим только когда
- * её нет: чужую отметку затирать нельзя. Онгоинг сюда не доходит — у него
- * потолок это последняя вышедшая серия. */
+ *  её нет: чужую отметку затирать нельзя. */
 function finishParts(): void {
   if (props.ongoing === true) return
   if (pickStatus.value !== 'COMPLETED') pickStatus.value = 'COMPLETED'
@@ -229,8 +236,67 @@ function onDrop(): void {
   emit('close')
 }
 
+/**
+ * Убрать тайтл из списка. Запись исчезает целиком — закладка, оценка, счёт, даты и заметка, —
+ * и из списка, и из статистики: об одном движении подсчитываются все экраны, поэтому счёт
+ * пересобирать вручную не нужно.
+ *
+ * Местная запись: на сервере AniList она ничего не пропадает, как и при удалении всего списка.
+ * В два нажатия, как очистка истории на своём экране: у пульта нажатие задеть легко, а отменить
+ * убранное нельзя. Черновик наружу не уходит: с тайтлом уходит и он.
+ */
+function onRemove(): void {
+  // Нечего убирать, если тайтла в списке нет: кнопки при такой записи и не видно.
+  if (props.status === '') return
+
+  if (!removing.value) {
+    removing.value = true
+
+    if (armTimer !== 0) window.clearTimeout(armTimer)
+    armTimer = window.setTimeout(() => {
+      armTimer = 0
+      removing.value = false
+    }, REMOVE_ARM_MS)
+
+    return
+  }
+
+  if (armTimer !== 0) window.clearTimeout(armTimer)
+  armTimer = 0
+  removing.value = false
+
+  emit('remove')
+  emit('close')
+}
+
 function onKey(event: KeyboardEvent): void {
   if (event.key === 'Escape') onDrop()
+}
+
+/** Окно обязано умещаться в кадр целиком: если запись не влезает, ужимается вся коробка,
+ *  а не прячет хвост под прокрутку. Потолок из стиля здесь снимается насовсем — с ним коробка
+ *  обрезала содержимое и мерилась бы уже подрезанной. */
+const veil = ref<HTMLElement | null>(null)
+const box = ref<HTMLElement | null>(null)
+
+let fitWatch: ResizeObserver | null = null
+
+function fitSheet(): void {
+  const host = veil.value
+  const el = box.value
+  if (host === null || el === null) return
+
+  el.style.maxHeight = 'none'
+
+  const style = getComputedStyle(host)
+  const room = host.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
+  const need = el.offsetHeight
+  if (room <= 0 || need <= 0) return
+
+  // Три знака после запятой: целое ужатие коробка не дёргает, а мелочь гасит мерцание
+  // от пиксельных дробей при каждом пересчёте.
+  const fit = Math.round(Math.min(1, room / need) * 1000) / 1000
+  el.style.setProperty('--am-fit', String(fit))
 }
 
 // «Назад» закрывает окно: под ним карточка, ради которой его открывали. Сниматель
@@ -243,6 +309,15 @@ onMounted(() => {
     onDrop()
     return true
   })
+
+  // Меряем сразу, до первого кадра, а дальше — по любому изменению размера: подложка
+  // меняется с окном и с экранной клавиатурой, коробка — с переносом длинного названия.
+  fitSheet()
+  if (typeof ResizeObserver !== 'undefined') {
+    fitWatch = new ResizeObserver(() => fitSheet())
+    if (veil.value !== null) fitWatch.observe(veil.value)
+    if (box.value !== null) fitWatch.observe(box.value)
+  }
 })
 
 onBeforeUnmount(() => {
@@ -251,6 +326,14 @@ onBeforeUnmount(() => {
   stopBack = null
 // Таймер держит ссылку на шторку: без снятия он дотянет до закрытия убранного окна.
   if (hold !== null) clearTimeout(hold)
+
+  // Взвод удаления живёт на своём таймере: ушедшее окно он тревожить не должен.
+  if (armTimer !== 0) window.clearTimeout(armTimer)
+  armTimer = 0
+
+  // Следитель за размером снимается вместе с окном: иначе он держит убранную коробку.
+  fitWatch?.disconnect()
+  fitWatch = null
 })
 </script>
 
@@ -258,13 +341,14 @@ onBeforeUnmount(() => {
 <!-- Перенос в body: fixed внутри экрана мерился от списка, а не от окна браузера. -->
   <Teleport to="body">
     <div
+      ref="veil"
       class="am-sheet"
       :class="{ 'am-sheet--tv': lite }"
       role="dialog"
       aria-modal="true"
       @click.self="onDrop"
     >
-      <div class="am-sheet__box">
+      <div ref="box" class="am-sheet__box">
         <header class="am-sheet__top">
           <div class="am-sheet__text">
             <span class="am-sheet__kicker">{{ nowStatus ?? 'Не в списке' }}</span>
@@ -306,7 +390,6 @@ onBeforeUnmount(() => {
             <span class="am-field__name">Оценка</span>
             <div class="am-step-row">
               <button
-                v-tip="'Меньше'"
                 class="am-step"
                 type="button"
                 aria-label="Меньше"
@@ -317,7 +400,6 @@ onBeforeUnmount(() => {
               </button>
               <span class="am-step__value">{{ markText(pickScore) }}</span>
               <button
-                v-tip="'Больше'"
                 class="am-step"
                 type="button"
                 aria-label="Больше"
@@ -338,7 +420,8 @@ onBeforeUnmount(() => {
                 type="button"
                 @click="setScore(mark)"
               >
-                {{ mark }}
+                <StarBloom />
+                <span>{{ mark }}</span>
               </button>
             </div>
           </section>
@@ -349,17 +432,23 @@ onBeforeUnmount(() => {
 <!-- Прыжок к потолку живёт только при известном потолке: без итога кнопка-обманка хуже её отсутствия. -->
             <div class="am-step-row am-step-row--ends">
               <button
-                v-tip="'В начало'"
                 class="am-step"
                 type="button"
                 aria-label="В начало"
                 @click="resetParts"
               >
                 <SakuraBloom />
-                <span aria-hidden="true">⇤</span>
+<!-- Свой знак вместо глифа: системный ⇤ живёт по раскладке, а здесь нужно то же, что в прочих
+     иконках — упор слева и два шеврона влево одним штрихом. -->
+                <span aria-hidden="true">
+                  <svg class="am-step__jump" viewBox="0 0 20 20">
+                    <path d="M4 5.5v9" />
+                    <path d="M17 6l-4.5 4 4.5 4" />
+                    <path d="M12 6l-4.5 4 4.5 4" />
+                  </svg>
+                </span>
               </button>
               <button
-                v-tip="'Меньше'"
                 class="am-step"
                 type="button"
                 aria-label="Меньше"
@@ -370,7 +459,6 @@ onBeforeUnmount(() => {
               </button>
               <span class="am-step__value">{{ partsText }}</span>
               <button
-                v-tip="'Больше'"
                 class="am-step"
                 type="button"
                 aria-label="Больше"
@@ -381,14 +469,20 @@ onBeforeUnmount(() => {
               </button>
               <button
                 v-if="partsTotal !== null"
-                v-tip="endHint"
                 class="am-step"
                 type="button"
                 :aria-label="endHint"
                 @click="fillParts"
               >
                 <SakuraBloom />
-                <span aria-hidden="true">⇥</span>
+<!-- Тот же знак, что «В начало», зеркальный: упор справа и два шеврона вправо. -->
+                <span aria-hidden="true">
+                  <svg class="am-step__jump" viewBox="0 0 20 20">
+                    <path d="M16 5.5v9" />
+                    <path d="M3 6l4.5 4L3 14" />
+                    <path d="M8 6l4.5 4L8 14" />
+                  </svg>
+                </span>
               </button>
             </div>
 
@@ -401,7 +495,6 @@ onBeforeUnmount(() => {
             <span class="am-field__name">Пересмотры</span>
             <div class="am-step-row">
               <button
-                v-tip="'Меньше'"
                 class="am-step"
                 type="button"
                 aria-label="Меньше"
@@ -412,7 +505,6 @@ onBeforeUnmount(() => {
               </button>
               <span class="am-step__value">{{ pickRepeat }}</span>
               <button
-                v-tip="'Больше'"
                 class="am-step"
                 type="button"
                 aria-label="Больше"
@@ -426,12 +518,12 @@ onBeforeUnmount(() => {
 
           <section class="am-field">
             <span class="am-field__name">Начато</span>
-            <DatePick :value="pickStarted" title="Начато" @pick="onStarted" />
+            <DateField :value="pickStarted" title="Начато" @pick="onStarted" />
           </section>
 
           <section class="am-field">
             <span class="am-field__name">Закончено</span>
-            <DatePick :value="pickCompleted" title="Закончено" @pick="onCompleted" />
+            <DateField :value="pickCompleted" title="Закончено" @pick="onCompleted" />
           </section>
 
           <section class="am-field am-field--wide">
@@ -446,9 +538,33 @@ onBeforeUnmount(() => {
         </div>
 
         <footer class="am-sheet__foot">
+          <!--
+            Убрать из списка: запись исчезает целиком — закладка, оценка, счёт, даты и заметка, —
+            и из списка, и из статистики. Запись местная: на сервере AniList она ничего
+            не пропадает, как и при удалении всего списка. В два нажатия, как очистка
+            истории на своём экране: у пульта нажатие задеть легко, а отменить убранное нельзя.
+            Тайтла вне списка не видно: убирать нечего.
+          -->
+          <button
+            v-if="status !== ''"
+            v-tip="removing ? 'Ещё раз — и запись уйдёт' : 'Убрать запись с этого устройства'"
+            class="am-btn am-btn--ghost"
+            :class="{ 'am-sheet__drop': removing }"
+            type="button"
+            @click="onRemove"
+          >
+            {{ removing ? 'Нажмите ещё раз' : 'Убрать из списка' }}
+          </button>
+
           <span class="am-bar__gap" />
 
-          <button class="am-btn" :class="{ 'am-btn--done': saved }" type="button" @click="onDone">
+          <button
+            v-tip="'Сохранить и закрыть'"
+            class="am-btn"
+            :class="{ 'am-btn--done': saved }"
+            type="button"
+            @click="onDone"
+          >
             <svg v-if="saved" class="am-btn__tick" viewBox="0 0 16 16" aria-hidden="true">
               <path d="M3.4 8.5 6.4 11.5 12.6 5" />
             </svg>
@@ -470,20 +586,25 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(12px, 3vw, 40px);
+  /* Отступ по высоте отдельно от ширины: кадр узкий и низкий чаще, чем широкий, и поле
+     в 3vw по вертикали отбирало у записи места больше, чем нужно. */
+  padding-block: clamp(12px, 2.4vh, 40px);
+  padding-inline: clamp(12px, 3vw, 40px);
   background: var(--am-veil);
   backdrop-filter: blur(8px);
   animation: am-veil-in var(--am-mid) var(--am-ease-soft) both;
 }
 
-/* Стеклянная коробка тремя этажами: прокручивается только середина, иначе «Готово» уезжала вниз. */
+/* Стеклянная коробка тремя этажами: прокручивается только середина, иначе «Готово» уезжала вниз.
+   Потолок в 90vh рос вместе с полями подложки и вылезал за кадр, поэтому потолок — высота
+   подложки целиком, а ужатое по ней значение приходит сверху в --am-fit (см. fitSheet()). */
 .am-sheet__box {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 16px;
   width: 100%;
   max-width: 920px;
-  max-height: min(90vh, 940px);
+  max-height: 100%;
   padding: clamp(18px, 2.2vw, 28px);
   overflow: hidden;
   background: linear-gradient(165deg, var(--am-glass-2), var(--am-glass));
@@ -493,6 +614,8 @@ onBeforeUnmount(() => {
     var(--am-sh-2),
     inset 0 1px 0 var(--am-edge);
   backdrop-filter: blur(var(--am-blur-strong)) saturate(1.5);
+  transform: scale(var(--am-fit, 1));
+  transform-origin: center;
   animation: am-sheet-in var(--am-mid) var(--am-ease) both;
 }
 
@@ -502,10 +625,17 @@ onBeforeUnmount(() => {
   }
 }
 
+/* Подъём идёт от ужатого размера: коробка входит в кадр уже той величины, какой ей
+   суждено быть, и на первом кадре не вылезает за край, дожидаясь замера. */
 @keyframes am-sheet-in {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(0.985);
+    transform: translateY(14px) scale(calc(var(--am-fit, 1) * 0.985));
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(var(--am-fit, 1));
   }
 }
 
@@ -536,11 +666,12 @@ onBeforeUnmount(() => {
   font-weight: 700;
   line-height: 1.22;
   letter-spacing: -0.01em;
+  /* Одно длинное слово не должно распирать шапку вбок: перенос лучше лишней ширины. */
+  overflow-wrap: anywhere;
 }
 
-/* Цель нажатия в 44 пикселя: мелкое на телевизоре не поймать. Круг и сакуру
-   рисует вложенный слой, а кнопка остаётся прямоугольной — так при ней остаются
-   и попадание курсора по всей цели, и кольцо фокуса. Тени берутся от --am-hover. */
+/* Цель нажатия в 44 пикселя. Круг и сакуру рисует вложенный слой, а кнопка
+   остаётся прямоугольной — при ней остаются попадание и кольцо фокуса. */
 .am-sheet__close {
   --am-bloom-deep: var(--am-hover);
   --am-bloom-petal: color-mix(in srgb, var(--am-sakura) 30%, var(--am-hover));
@@ -567,7 +698,7 @@ onBeforeUnmount(() => {
   transition: color var(--am-fast) var(--am-ease);
 }
 
-.am-sheet__close:hover,
+.am-sheet__close:hover:where(:not(.am-lite *)),
 .am-sheet__close:focus-visible {
   color: var(--am-text);
 }
@@ -579,7 +710,7 @@ onBeforeUnmount(() => {
   transition: transform var(--am-fast) var(--am-ease);
 }
 
-.am-sheet__close:hover > span,
+.am-sheet__close:hover:where(:not(.am-lite *)) > span,
 .am-sheet__close:focus-visible > span {
   transform: translateY(-1px);
 }
@@ -647,7 +778,7 @@ onBeforeUnmount(() => {
     border-color var(--am-fast) var(--am-ease);
 }
 
-.am-pick:hover {
+.am-pick:hover:where(:not(.am-lite *)) {
   color: var(--am-text);
   background: var(--am-hover);
 }
@@ -659,36 +790,49 @@ onBeforeUnmount(() => {
   box-shadow: var(--am-sh-ring);
 }
 
-/* Балл красится своим тоном шкалы: правила ниже перебивают общую заливку; тон считается в скрипте. */
+/* Балл одет в тот же слой-цветок, что шаг у серий: в покое это круг тона балла, из него под
+   курсором раскрывается звезда, а цифра лежит поверх обоих. Своей заливки у кнопки больше нет:
+   с ней под звездой остаётся старый прямоугольник, а при нажатии он же меняет форму на лепесток,
+   и второй силуэт торчит из-под цветка. Тон идёт от `--am-mark`: красный у единицы, зелёный у
+   десяти; круг и звезда берут его по-разному, иначе слились бы друг с другом. */
 .am-pick--num {
   --am-on-mark: #f7fbff;
+  --am-bloom-deep: color-mix(in srgb, var(--am-mark) 42%, #0b1017);
+  --am-bloom-petal: color-mix(in srgb, var(--am-mark) 72%, #0b1017);
+  --am-bloom-shade: var(--am-sh-1);
+  --am-bloom-veil: 0.9;
 
+  position: relative;
   min-width: 52px;
   font-weight: 700;
   color: var(--am-on-mark);
-  background: linear-gradient(180deg, var(--am-mark), var(--am-mark-deep));
-  border-color: var(--am-line-soft);
-  border-radius: var(--am-r-m);
+  background: none;
+  border: 0;
+  border-radius: var(--am-r-cap);
   opacity: 0.58;
-  transition:
-    opacity var(--am-fast) var(--am-ease),
-    box-shadow var(--am-fast) var(--am-ease),
-    border-radius var(--am-mid) var(--am-ease);
+  transition: opacity var(--am-fast) var(--am-ease);
 }
 
-.am-pick--num:hover {
-  color: var(--am-on-mark);
-  background: linear-gradient(180deg, var(--am-mark), var(--am-mark-deep));
-  border-radius: var(--am-r-drop);
+/* Цифра поднята над слоем цветка: он лежит absolute, и без своего якоря знак оказался бы под
+   заливкой — ровно как у знака над сакурой. */
+.am-pick--num > span {
+  position: relative;
+}
+
+.am-pick--num:hover:where(:not(.am-lite *)) {
   opacity: 0.88;
 }
 
+/* Нажатая кнопка не гаснет: у цветочного слоя своя яркость, и приглушённая кнопка гасила бы её. */
+.am-pick--num:focus {
+  opacity: 1;
+}
+
+/* Выбранный балл: полная яркость и кольцо своего тона. Кольцо нужно и под кромкой пульта —
+   звезда у выбранной и просто нажатой одна, и без кольца они неразличимы. */
 .am-pick--num.am-pick--on {
   color: var(--am-on-mark);
-  background: linear-gradient(180deg, var(--am-mark), var(--am-mark-deep));
-  border-color: var(--am-edge);
-  border-radius: var(--am-r-drop);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--am-mark) 45%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--am-mark) 45%, transparent);
   opacity: 1;
 }
 
@@ -727,7 +871,7 @@ onBeforeUnmount(() => {
   transition: color var(--am-fast) var(--am-ease);
 }
 
-.am-step:hover,
+.am-step:hover:where(:not(.am-lite *)),
 .am-step:focus-visible {
   color: var(--am-text);
 }
@@ -746,12 +890,30 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-/* Заметка не круглая: скругление полей ввода на большом поле смотрится нелепо. */
+/* Знак прыжка нарисован, а не набран: системный глиф живёт по раскладке и толщиной
+   не совпадает ни с чем. Тот же штрих, что у прочих иконок, — 1.8 и скругления на концах. */
+.am-step__jump {
+  display: block;
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Заметка не круглая: скругление полей ввода на большом поле смотрится нелепо.
+   Высота — ровно три строки (3 × 21 плюс поля): поле, вмещающее полторы, показывало вторую
+   обрезанной, и курсор, поставленный в неё, мигал ниже текста. Кегль и интерлиньяж заданы
+   числом, иначе «высота в строках» не сходится. */
 .am-note {
-  min-height: 96px;
+  height: 87px;
+  min-height: 87px;
   padding: 12px 14px;
   font: inherit;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 21px;
   background: var(--am-fill-2);
   border-radius: var(--am-r-m);
   resize: vertical;
@@ -767,6 +929,12 @@ onBeforeUnmount(() => {
    изменилась кнопка или это уже другая. Зелёный из темы читается как «получилось». */
 .am-btn--done {
   color: var(--am-good);
+}
+
+/* Взведённое удаление краснеет: второе нажатие необратимо, и это должно быть видно до него. */
+.am-sheet__drop {
+  color: var(--am-bad);
+  border-color: color-mix(in srgb, var(--am-bad) 45%, transparent);
 }
 
 /* Галочка штрихом, а не заливкой: на пятнадцати пикселях залитый знак расплывается в кляксу. */
@@ -787,13 +955,18 @@ onBeforeUnmount(() => {
   }
 }
 
-/* ТЕЛЕВИЗОР Запись собиралась под мышь и не вставала в кадр — листать её пультом
-   нельзя: прокрутка у тела своя и спорит со стрелкой «вниз». Лечение в раскладке:
-   окно шире и ниже, поля мельче, закладка с оценкой — в половину ширины. */
+/* ТЕЛЕВИЗОР Прокрутка тела спорит со стрелкой «вниз», поэтому запись листается
+   раскладкой: окно шире и ниже, поля мельче, закладка с оценкой — вполовину. */
+.am-sheet--tv {
+  /* Кадр приставки — 720p чаще, чем 1080p: по высоте берём меньше, чем по ширине,
+     и вся запись встаёт без ужатия. */
+  padding-block: clamp(8px, 2.2vh, 32px);
+  padding-inline: clamp(10px, 2.6vw, 32px);
+}
+
 .am-sheet--tv .am-sheet__box {
   gap: 10px;
   max-width: min(1120px, 94vw);
-  max-height: min(92vh, 900px);
   padding: 14px;
 }
 
@@ -820,9 +993,8 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
-/* Десять баллов обязаны встать в один ряд: в половине окна шкала при 42 пикселях
-   на кнопку ложилась вторым рядом и выталкивала подвал за край кадра. Десять по 36
-   плюс девять просветов по 4 — 396 пикселей при колонке в 415. */
+/* Десять баллов обязаны встать в один ряд: в половине окна шкала ложилась вторым
+   рядом и выталкивала подвал за край. Десять по 36 плюс девять просветов по 4. */
 .am-sheet--tv .am-pick--num {
   min-width: 36px;
   padding: 0 4px;
@@ -830,13 +1002,6 @@ onBeforeUnmount(() => {
 
 .am-sheet--tv .am-step-row {
   gap: 8px;
-}
-
-/* Поле ввода трёх строк: в две заметку не вписать, в пять окно снова вырастает.
-   Высота задана явно — атрибут rows из разметки здесь не перебить. */
-.am-sheet--tv .am-note {
-  height: 54px;
-  min-height: 54px;
 }
 
 .am-sheet--tv .am-btn {
@@ -849,7 +1014,7 @@ onBeforeUnmount(() => {
     animation: none;
   }
 
-  .am-sheet__close:hover > span,
+  .am-sheet__close:hover:where(:not(.am-lite *)) > span,
   .am-sheet__close:focus-visible > span {
     transform: none;
   }

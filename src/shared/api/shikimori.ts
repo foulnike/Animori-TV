@@ -122,11 +122,8 @@ interface GraphqlReply<T> {
 }
 
 /**
- * Общий обход зеркал: слот темпа, отчёт о доступности, трактовка кодов,
- * повтор по 429 и выбор предпочтённого адреса.
- *
- * `read` обязан бросить исключение на негодном ответе: брошенное здесь означает
- * «беда ответа, не адреса», и обход уходит на следующее зеркало.
+ * Общий обход зеркал: слот темпа, отчёт о доступности, трактовка кодов, повтор по 429.
+ * `read` обязан бросить исключение на негодном ответе: иначе обход уходит на зеркало дальше.
  */
 async function askMirrors<T>(
   req: MirrorRequest,
@@ -230,10 +227,7 @@ async function askMirrors<T>(
   throw new Error(`Все зеркала Shikimori недоступны для ${req.path}`)
 }
 
-/**
- * GET к Shikimori REST с перебором зеркал и повтором при 429.
- * @param path Путь вида `/api/animes/123`, без домена.
- */
+/** GET к Shikimori REST: путь вида `/api/animes/123`, без домена. Перебор зеркал и повтор при 429. */
 export async function fetchShiki<T = unknown>(
   path: string,
   attempt = 0,
@@ -242,11 +236,8 @@ export async function fetchShiki<T = unknown>(
 }
 
 /**
- * POST в Shikimori GraphQL с тем же перебором зеркал и тем же бюджетом темпа.
- * GraphQL почти всегда отвечает 200, поэтому негодный ответ распознаётся по пустому
- * `data`: для обхода это равносильно битому телу, и он идёт дальше. Ошибки рядом
- * с данными не мешают — сервер вправе отдать часть пачки.
- * @param note Приписка для журнала: путь у всех запросов один, `/api/graphql`.
+ * POST в GraphQL с тем же перебором зеркал и бюджетом темпа; `note` идёт в журнал, путь один.
+ * GraphQL почти всегда отвечает 200, поэтому негодный ответ распознаётся по пустому `data`.
  */
 export async function fetchShikiGraphql<T = unknown>(
   query: string,
@@ -273,10 +264,7 @@ export async function fetchShikiGraphql<T = unknown>(
   )
 }
 
-/**
- * Проба одного зеркала для общей проверки сети. Мимо askMirrors намеренно: обход
- * отвечает «где взять данные», проба — «что с этим адресом». Слот темпа берётся как обычно.
- */
+/** Проба зеркала мимо askMirrors намеренно: обход отвечает «где взять данные», проба — «что с адресом». */
 async function probeMirror(domain: string): Promise<void> {
   const startedAt = Date.now()
   const label = `Shikimori (${domain})`

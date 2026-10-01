@@ -190,7 +190,7 @@ watch(
     box-shadow var(--am-mid) var(--am-ease);
 }
 
-.am-roll__hit:hover {
+.am-roll__hit:hover:where(:not(.am-lite *)) {
   background: var(--am-fill-2);
 }
 

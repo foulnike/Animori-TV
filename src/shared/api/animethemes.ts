@@ -64,11 +64,8 @@ export interface MalThemes {
 }
 
 /**
- * Службы, ссылки на которые имеют смысл в карточке. Среди ресурсов песни приезжают
- * и каталоги вроде ANIDB: слушать по ним нечего, и в строку они не идут.
- *
- * Порядок значим: YouTube Music и YouTube дают один ключ разметки, и первая
- * найденная площадка занимает его.
+ * Порядок значим: YouTube Music и YouTube дают один ключ разметки, и первая найденная
+ * площадка занимает его. Каталоги вроде ANIDB в строку не идут: слушать по ним нечего.
  */
 const MUSIC_SITES: ReadonlyArray<{ key: string; site: string; label: string }> = [
   { key: 'SPOTIFY', site: 'spotify', label: 'Spotify' },
@@ -169,11 +166,7 @@ function pickLinks(resources: readonly AnimeThemesResource[]): ThemeLink[] {
   return out
 }
 
-/**
- * Номер темы из слага: первая группа цифр. Склеивать все цифры подряд нельзя —
- * OP1-EN4Kids дал бы 14 и встал бы на место настоящей четырнадцатой заставки.
- * Цифр в слаге может не быть вовсе: тогда это первая заставка.
- */
+/** Первая группа цифр: OP1-EN4Kids дал бы 14 и встал бы на место настоящей четырнадцатой заставки. */
 function seqOf(slug: string): string {
   return slug.match(/\d+/)?.[0] ?? '1'
 }
@@ -226,10 +219,7 @@ function formatThemes(themes: AnimeThemesEntry[]): MalThemes {
   }
 }
 
-/**
- * Грузит темы по MAL ID; кэш — mediaCache. Никогда не отклоняется: любая неудача — null.
- * @param malId Идентификатор MyAnimeList или null, если его не удалось разрешить.
- */
+/** Темы по MAL ID; кэш — mediaCache. Никогда не отклоняется: любая неудача — null. */
 export async function fetchMalThemes(malId: number | null): Promise<MalThemes | null> {
   if (!malId) return null
 

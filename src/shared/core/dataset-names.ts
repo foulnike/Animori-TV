@@ -1,6 +1,5 @@
-// Датасет названий: слепок выпуска animori-data на диске, читается без сети — между памятью и складом IndexedDB.
-// Обновление повторяет updater.rs: опись, сверка даты, загрузка, отпечатки, замена целиком, применение со следующего запуска.
-// Между проверками — LIFE_DATASET_CHECK и If-None-Match: выпуск выходит раз в неделю.
+// Датасет названий: слепок выпуска animori-data на диске, читается без сети. Обновление
+// повторяет updater.rs; между проверками — LIFE_DATASET_CHECK и If-None-Match.
 
 import { Bridge } from '@/bridge'
 import {
@@ -137,8 +136,7 @@ export async function lookupDatasetName(mediaId: number): Promise<DatasetAnswer>
 }
 
 // Номер MAL по номеру AniList из выпуска, без сети. Своя запись списка идёт первой (номер
-// дал AniList, он точнее слепка), карта выпуска — вторая. Синхронная сознательно: зовётся
-// из сетевого слоя в цикле. Пустота значит «пары нет в выпуске», а не «пары не существует».
+// дал AniList, он точнее слепка), карта выпуска — вторая. Пустота значит «пары нет в выпуске».
 export function datasetMalId(mediaId: number): number | null {
   const own = getEntry(mediaId)?.malId
   if (typeof own === 'number' && own > 0) return own
@@ -203,10 +201,8 @@ function dueForCheck(checkedAt: number): boolean {
   return !isFresh(`dataset:${installedBuiltAt}`, checkedAt, LIFE_DATASET_CHECK)
 }
 
-// Фоновая сверка с последним выпуском: новее — оба файла качаются, сверяются по
-// отпечаткам и заменяют слепок целиком. В память этого запуска обновление не попадает —
-// новый выпуск работает со следующего запуска.
-// @param force Проверить несмотря на порог: ставится там, где проверку затеял человек кнопкой.
+// Фоновая сверка с последним выпуском: новее — оба файла качаются и заменяют слепок целиком.
+// `force` проверяет несмотря на порог, по кнопке. Новый выпуск работает со следующего запуска.
 export function updateDatasetNamesInBackground(force = false): Promise<void> | undefined {
   if (!Bridge.files.available || updating) return undefined
 
@@ -224,20 +220,23 @@ export function updateDatasetNamesInBackground(force = false): Promise<void> | u
       return
     }
 
-    const answer = await fetchDatasetIndex(knownEtag || null)
+    // Ручная проверка идёт без отпечатка: иначе кнопка не помогла бы там, где
+    // отпечаток и содержимое диска разошлись.
+    const answer = await fetchDatasetIndex(force ? null : knownEtag || null)
 
-    // Неудача час проверки не сдвигает: иначе отказ сети на старте отодвинул бы попытку на полсуток.
+    // Ни отказ сети, ни сорванная запись час проверки не сдвигают: иначе одна
+    // неудача на старте отодвинула бы попытку на полсуток.
     if (answer.kind === 'fail') return
 
-    await Bridge.storage.set(CHECKED_AT_KEY, Date.now())
-
-    // 304: сервер сам сказал, что опись та же; тела нет, сравнивать нечего.
-    if (answer.kind === 'same') return
+    if (answer.kind === 'same') {
+      await Bridge.storage.set(CHECKED_AT_KEY, Date.now())
+      return
+    }
 
     const { index, etag } = answer
-    if (etag !== '') await Bridge.storage.set(ETAG_KEY, etag)
 
     if (installedBuiltAt !== '' && index.builtAt <= installedBuiltAt) {
+      await Bridge.storage.set(CHECKED_AT_KEY, Date.now())
       Logger('DB', `Датасет актуален: сборка ${installedBuiltAt}`)
       return
     }
@@ -268,13 +267,20 @@ export function updateDatasetNamesInBackground(force = false): Promise<void> | u
     }
 
     const ok = await Bridge.files.write(DATASET_FILE, JSON.stringify(file))
-    if (ok) {
-      loading = null
-      await initDatasetNames()
-      Logger('DB', `Датасет обновлён до сборки ${index.builtAt}: имён ${titles.count}`)
-    } else {
+    if (!ok) {
       Logger('WARN', 'Датасет: новый выпуск не записался на диск')
+      return
     }
+
+    // Отпечаток запоминается только после записи: он значит «на диске ровно
+    // этот выпуск». Сохранённый раньше, он заставил бы клиент после сбоя вечно
+    // получать 304 и не пробовать до следующего выпуска.
+    if (etag !== '') await Bridge.storage.set(ETAG_KEY, etag)
+    await Bridge.storage.set(CHECKED_AT_KEY, Date.now())
+
+    loading = null
+    await initDatasetNames()
+    Logger('DB', `Датасет обновлён до сборки ${index.builtAt}: имён ${titles.count}`)
   })()
 
   updating

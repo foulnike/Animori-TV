@@ -1,9 +1,6 @@
 <script setup lang="ts">
-// Пункт 3.2: рамка окна — рельс меню, шапка, сменный экран внутри.
-// Об экранах знает только имена и подписи из routes.ts.
-//
-// Рельс сложен по умолчанию и раскрывается поверх содержимого (fixed, не sticky);
-// после мышиного выбора фокус снимается сразу — см. onPick.
+// Пункт 3.2: рамка окна — рельс, шапка, сменный экран внутри; имена и подписи экранов
+// живут в routes.ts. Рельс раскрывается поверх содержимого (fixed, не sticky).
 
 import { computed } from 'vue'
 
@@ -34,8 +31,7 @@ const BACK_SCREENS: ReadonlyArray<string> = ['media', 'studio', 'log']
 const canGoBack = computed(() => BACK_SCREENS.includes(active.value))
 
 /** Выбор пункта меню. detail у клавиатуры равен нулю — там фокус остаётся на
- * кнопке, иначе обход меню оборвётся на первом же выборе; у мыши он больше
- * нуля, и фокус ей не нужен: он лишь держал рельс разложенным. */
+ *  кнопке, иначе обход меню оборвётся на первом же выборе. */
 function onPick(name: MenuName, e: MouseEvent): void {
   if (e.detail > 0 && e.currentTarget instanceof HTMLElement) e.currentTarget.blur()
   navigate(name)
@@ -107,10 +103,8 @@ function onReload(): void {
       </main>
     </div>
 
-<!-- Рельс стоит в разметке последним, хотя на экране слева: оболочка берёт
-     для фокуса первый элемент по разметке, и с рельсом в начале экран открывался
-     бы с меню, а не с того, ради чего его открывали. Поставить фокус из скрипта
-     нельзя — оболочка съест следующее нажатие раньше пульта (dpad.ts). -->
+<!-- Рельс стоит в разметке последним, хотя на экране слева: оболочка берёт для фокуса
+     первый элемент по разметке, и с рельсом в начале экран открывался бы с меню. -->
     <aside class="am-side">
       <div class="am-side__brand">
         <AppMark class="am-side__logo" />
@@ -154,8 +148,7 @@ function onReload(): void {
         </button>
 
 <!-- Пункт обновления появляется сам, когда проверка при старте нашла выпуск новее,
-     и живёт последним: он не действие на каждый день, а редкий случай. От «Обновить»
-     его отличает и значок, и подпись: то перезапускает окно, это приносит новую версию. -->
+     и живёт последним: он не действие на каждый день, а редкий случай. -->
         <button
           v-if="lite && updateOffer"
           class="am-side__item am-side__item--act am-side__item--new"
@@ -174,8 +167,7 @@ function onReload(): void {
 
 <style scoped>
 /* Место под рельс держит отступ, а не колонка сетки: рельс в fixed выпадает из
-   потока, и авторасстановка ставит тело в узкую колонку, отведённую под рельс.
-   Ширина берётся по сложенному рельсу: раскрытый ложится поверх содержимого. */
+   потока, и авторасстановка ставит тело в узкую колонку под рельс. */
 .am-shell {
   min-height: 100vh;
   padding-left: var(--am-side-slim);
@@ -209,7 +201,7 @@ function onReload(): void {
 
 /* Фокус равен курсору: иначе обход меню с клавиатуры шёл бы по слепым значкам.
    Фокус снимает onPick — иначе это правило держало рельс разложенным после мыши. */
-.am-side:hover,
+.am-side:hover:where(:not(.am-lite *)),
 .am-side:focus-within {
   width: calc(var(--am-side) - 14px);
   box-shadow:
@@ -252,9 +244,9 @@ function onReload(): void {
   transform: translateX(-6px);
 }
 
-.am-side:hover .am-side__name,
-.am-side:hover .am-side__text,
-.am-side:hover .am-side__foot,
+.am-side:hover:where(:not(.am-lite *)) .am-side__name,
+.am-side:hover:where(:not(.am-lite *)) .am-side__text,
+.am-side:hover:where(:not(.am-lite *)) .am-side__foot,
 .am-side:focus-within .am-side__name,
 .am-side:focus-within .am-side__text,
 .am-side:focus-within .am-side__foot {
@@ -294,7 +286,7 @@ function onReload(): void {
     background-color var(--am-fast) var(--am-ease);
 }
 
-.am-side__item:hover {
+.am-side__item:hover:where(:not(.am-lite *)) {
   color: var(--am-text);
   background: var(--am-fill-1);
 }
@@ -308,15 +300,14 @@ function onReload(): void {
   );
 }
 
-/* Свёрнутый рельс: подпись не занимает места, значок центрируется по рельсу,
-   иначе полоса выглядит «лесенкой влево». Главный тумблер — класс .am-side--open
-   (на ТВ :hover почти не срабатывает); :hover оставлен для ПК. */
-.am-side:not(.am-side--open):not(:hover):not(:focus-within) .am-side__item {
+/* Свёрнутый рельс: подпись не занимает места, значок центрируется по рельсу.
+   Главный тумблер — класс .am-side--open, :hover оставлен для ПК. */
+.am-side:not(.am-side--open):not(:hover:where(:not(.am-lite *))):not(:focus-within) .am-side__item {
   justify-content: center;
   padding: 0;
   gap: 0;
 }
-.am-side:not(.am-side--open):not(:hover):not(:focus-within) .am-side__text {
+.am-side:not(.am-side--open):not(:hover:where(:not(.am-lite *))):not(:focus-within) .am-side__text {
   width: 0;
   height: 0;
   overflow: hidden;
@@ -420,7 +411,7 @@ function onReload(): void {
 
 /* Едет одна стрелка, а не вся кнопка: сдвиг капсулы тащил за собой рамку и кольцо фокуса.
    Отклик — кромка по краю капсулы, без размытого пятна под ней. */
-.am-top__back:hover,
+.am-top__back:hover:where(:not(.am-lite *)),
 .am-top__back:focus-visible {
   color: var(--am-text);
   background: var(--am-fill-2);
@@ -443,7 +434,7 @@ function onReload(): void {
     transform var(--am-fast) var(--am-ease);
 }
 
-.am-top__back:hover .am-top__sign,
+.am-top__back:hover:where(:not(.am-lite *)) .am-top__sign,
 .am-top__back:focus-visible .am-top__sign {
   background: rgb(var(--am-accent-rgb) / 0.22);
   transform: translateX(-2px);
@@ -500,7 +491,7 @@ function onReload(): void {
     background-color var(--am-mid) var(--am-ease);
 }
 
-.am-skin__btn:hover,
+.am-skin__btn:hover:where(:not(.am-lite *)),
 .am-skin__btn:focus-visible {
   color: var(--am-text);
 }
@@ -511,7 +502,7 @@ function onReload(): void {
 }
 
 /* Знак поднимается вместо подсветки целой кнопки: подложка занята выбранной темой. */
-.am-skin__btn:hover > span,
+.am-skin__btn:hover:where(:not(.am-lite *)) > span,
 .am-skin__btn:focus-visible > span {
   transform: translateY(-1px);
 }
@@ -543,7 +534,7 @@ function onReload(): void {
     border-color var(--am-fast) var(--am-ease);
 }
 
-.am-top__icon:hover,
+.am-top__icon:hover:where(:not(.am-lite *)),
 .am-top__icon:focus-visible {
   color: var(--am-text);
   border-color: var(--am-accent);
@@ -555,7 +546,7 @@ function onReload(): void {
   transition: transform var(--am-slow) var(--am-ease);
 }
 
-.am-top__icon:hover > span,
+.am-top__icon:hover:where(:not(.am-lite *)) > span,
 .am-top__icon:focus-visible > span {
   transform: rotate(180deg);
 }
@@ -587,9 +578,8 @@ function onReload(): void {
   }
 }
 
-/* Внутрь содержимое приходит справа, наружу — слева; движется только приходящий экран.
-   18 пикселей — ровно боковое поле .am-view (clamp(18px, 2vw, 44px)): сдвиг уходит в поле,
-   а не за край окна. Обрезать .am-view нельзя — внутри прилипающая панель плеера. */
+/* Внутрь содержимое приходит справа, наружу — слева. 18 пикселей — ровно боковое
+   поле .am-view, сдвиг уходит в поле, а не за край окна. */
 .am-view__hold--deep {
   animation-name: am-deep;
 }
@@ -640,11 +630,11 @@ function onReload(): void {
   .am-side__name,
   .am-side__text,
   .am-side__foot,
-  .am-top__back:hover .am-top__sign,
+  .am-top__back:hover:where(:not(.am-lite *)) .am-top__sign,
   .am-top__back:focus-visible .am-top__sign,
-  .am-skin__btn:hover > span,
+  .am-skin__btn:hover:where(:not(.am-lite *)) > span,
   .am-skin__btn:focus-visible > span,
-  .am-top__icon:hover > span,
+  .am-top__icon:hover:where(:not(.am-lite *)) > span,
   .am-top__icon:focus-visible > span {
     transform: none;
   }

@@ -1,6 +1,5 @@
-// Акцентные темы тулкита: пресет переопределяет --am-accent на documentElement.
-// Красятся только виджеты и модалки; тема сайта остаётся нетронутой.
-// Инлайновые «синий = AniList, розовый = Shikimori» — семантика источника, не акцент.
+// Акцентные темы тулкита: пресет переопределяет --am-accent на documentElement. Красятся
+// только виджеты и модалки; «синий = AniList, розовый = Shikimori» — семантика источника.
 
 import type { AccentPreset } from './settings'
 
@@ -39,10 +38,8 @@ export function getAccentTriple(): string | null {
   return amAccentTriple
 }
 
-/**
- * Разбирает #rgb или #rrggbb в триплет "r,g,b". Любой иной ввод — null.
- * Триплет, а не hex: весь style.scss строит прозрачность через rgba(var(--am-accent), …).
- */
+/** Разбирает #rgb или #rrggbb в триплет "r,g,b"; иной ввод — null. Триплет, а не hex —
+ * весь style.scss строит прозрачность через rgba(var(--am-accent), …). */
 export function parseAccentHex(hex: string): string | null {
   const raw = hex.trim().replace(/^#/, '')
   const full = raw.length === 3 ? raw.replace(/./g, (c) => c + c) : raw
@@ -61,10 +58,8 @@ export function accentTripleToHex(triple: string): string {
   return '#' + [r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')
 }
 
-/**
- * Слишком светлый акцент: на нём теряется белый текст кнопок и активных серий.
- * Яркость без гамма-коррекции: для подсказки в карточке точности хватает.
- */
+/** Слишком светлый акцент: теряется белый текст кнопок. Яркость без гамма-коррекции:
+ * для подсказки в карточке хватает. */
 export function isAccentTooLight(triple: string): boolean {
   const [r = 0, g = 0, b = 0] = triple.split(',').map((p) => Number(p.trim()) || 0)
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > LIGHT_LIMIT

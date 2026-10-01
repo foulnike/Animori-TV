@@ -4,10 +4,8 @@ import { ref } from 'vue'
 
 export type SortName = 'updated' | 'score' | 'rating' | 'nameUp' | 'nameDown'
 
-/**
- * Вид показа: компактные строки и строки с миниатюрой. Крупные постеры убраны — на телевизоре их шесть на экран.
- * По умолчанию wide: по списку узнают глазами.
- */
+/** Вид показа: компактные строки и строки с миниатюрой; крупные постеры на телевизоре — шесть на экран.
+ *  По умолчанию wide: по списку узнают глазами. */
 export type ViewName = 'slim' | 'wide'
 
 export const keptStatus = ref<string>('CURRENT')

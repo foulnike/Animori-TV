@@ -160,14 +160,14 @@ function barHint(): string {
   padding-right: 48px;
 }
 
-.am-row__hit:hover,
+.am-row__hit:hover:where(:not(.am-lite *)),
 .am-row__hit:focus-visible {
   background: var(--am-hover);
   border-color: rgb(var(--am-accent-rgb) / 0.45);
   transform: translateY(-1px);
 }
 
-.am-row__hit:hover .am-row__name,
+.am-row__hit:hover:where(:not(.am-lite *)) .am-row__name,
 .am-row__hit:focus-visible .am-row__name {
   color: var(--am-accent);
 }
@@ -229,9 +229,8 @@ function barHint(): string {
   color: var(--am-bad);
 }
 
-/* Полоса пройденного тянется до правого края строки: короткий отрезок посреди не давал шкалы.
-   Поток разметки не трогает — иначе строка с полосой была бы выше и шаг списка гулял бы.
-   width: auto обязателен: общий .am-line на всю ширину, а у абсолютной коробки заданная ширина сильнее правого отступа. */
+/* Полоса пройденного тянется до правого края строки: короткий отрезок посреди не давал
+   шкалы. Поток разметки не трогает — иначе строка с полосой была бы выше. */
 .am-row__line {
   position: absolute;
   right: 18px;
@@ -292,12 +291,12 @@ function barHint(): string {
   top: calc(50% - 4px);
 }
 
-.am-row:hover .am-row__edit,
+.am-row:hover:where(:not(.am-lite *)) .am-row__edit,
 .am-row:focus-within .am-row__edit {
   opacity: 1;
 }
 
-.am-row__edit:hover,
+.am-row__edit:hover:where(:not(.am-lite *)),
 .am-row__edit:focus-visible {
   color: var(--am-accent);
   background: var(--am-hover);
@@ -322,7 +321,7 @@ function barHint(): string {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .am-row__hit:hover,
+  .am-row__hit:hover:where(:not(.am-lite *)),
   .am-row__hit:focus-visible {
     transform: none;
   }

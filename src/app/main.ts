@@ -12,6 +12,7 @@ import { initCollection } from '@/core/collection'
 import { initDatasetNames, updateDatasetNamesInBackground } from '@/core/dataset-names'
 import { loadSettings } from '@/core/settings'
 import { installGlobalErrorHandlers } from '@/utils/logger'
+import { initSplash } from './splash'
 
 // Стиль всплывающих подписей: плашка живёт в body, и scoped-правила
 // компонентов до неё не достают.
@@ -41,7 +42,9 @@ function hideBoot(): void {
 async function start(): Promise<void> {
   console.log('[am-start] start() begin')
   try {
-    await loadSettings()
+    // Фраза плашки заготовляется вместе с настройками: она должна стоять с первой отрисовки,
+    // а не появляться, когда ответит хранилище. Отказ хранилища показу не мешает.
+    await Promise.all([loadSettings(), initSplash().catch(() => undefined)])
     console.log('[am-start] loadSettings done')
   } catch (e) {
     console.error('[am-start] loadSettings FAILED', e)

@@ -1,6 +1,5 @@
-// Обновление на приставке. Своего апдейтера у Tauri на Android нет вовсе:
-// плагин существует только для десктопа, поэтому версию сверяем сами, а
-// установку отдаём системе — см. BUILD.md.
+// Обновление на приставке. Своего апдейтера у Tauri на Android нет: плагин только для десктопа,
+// поэтому версию сверяем сами, а установку отдаём системе — см. BUILD.md.
 
 import { ref } from 'vue'
 
@@ -68,8 +67,7 @@ function pickAsset(
 }
 
 /** Один вопрос к GitHub: список выпусков, из них — последний с приставкой `tv-`.
- * Запрос идёт мостом, а не `fetch` окна: весь трафик в приложении идёт через
- * оболочку, и у моста тот же путь, что у датасета названий. */
+ *  Запрос идёт мостом, а не `fetch` окна: весь трафик идёт через оболочку. */
 export async function checkUpdate(): Promise<UpdateOffer | null> {
   const answer = await Bridge.http.request({
     url: RELEASES,
@@ -113,10 +111,8 @@ export async function startUpdateCheck(): Promise<void> {
   }
 }
 
-/**
- * Отдаёт файл системе. false — человек ушёл в настройки за правом установки,
- * и скачивания не было: это не отказ, а ожидаемый первый шаг.
- */
+/** Отдаёт файл системе. false — человек ушёл в настройки за правом установки,
+ *  и скачивания не было: это не отказ, а ожидаемый первый шаг. */
 export function installUpdate(url: string): boolean {
   const bridge = (window as unknown as { AnimoriUpdate?: { install?: (u: string) => boolean } })
     .AnimoriUpdate

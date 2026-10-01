@@ -1,4 +1,3 @@
-// Данные карточки аниме: подробности, русская карточка, оценки площадок, франшиза, правки записи.
 // Состояние списка — из памяти коллекции, а не из ответа: список односторонний, правда живёт здесь.
 // Возврат назад ничего не добирает; чужие службы спрашиваем о плитках, попавших в окно (v-seen).
 
@@ -68,7 +67,15 @@ export interface MineFact {
 }
 
 /** Виды правки, доступные с карточки; удаление записи сюда пока не входит. */
-type CardEdit = 'status' | 'score' | 'progress' | 'repeat' | 'startedAt' | 'completedAt' | 'notes'
+type CardEdit =
+  | 'status'
+  | 'score'
+  | 'progress'
+  | 'repeat'
+  | 'startedAt'
+  | 'completedAt'
+  | 'notes'
+  | 'remove'
 
 /** Уже открытая карточка целиком: возврат назад показывает её без вопросов. */
 interface Shown {
@@ -124,6 +131,8 @@ export interface MediaCardView {
   onPickStarted: (value: string) => void
   onPickCompleted: (value: string) => void
   onPickNotes: (value: string) => void
+  /** Убрать тайтл из списка целиком: закладка, оценка, счёт, даты и заметка. */
+  onPickRemove: () => void
 }
 
 function describe(e: unknown): string {
@@ -436,7 +445,7 @@ export function useMediaCard(mediaId: Ref<number>): MediaCardView {
   function scrollToHere(): void {
     void nextTick(() => {
       const box = franList.value
-      const hit = box?.querySelector<HTMLElement>('.am-part__hit--here')
+      const hit = box?.querySelector<HTMLElement>('.am-face__hit--here')
       if (!box || !hit) return
 
       const place = hit.getBoundingClientRect()
@@ -685,9 +694,8 @@ export function useMediaCard(mediaId: Ref<number>): MediaCardView {
     await beginRussian(mine, id)
   }
 
-  /** Русская карточка с повтором на сбое: сбой отличается от «перевода нет» и потому требует повтора —
-   *  без него человек получал бы английский текст там, где через секунду приехал бы русский.
-   *  Когда попытки кончились, исход считается отказом: карточка без описания хуже карточки с английским. */
+  /** Русская карточка с повтором на сбое: сбой отличается от «перевода нет», а после исчерпания попыток
+   *  исход считается отказом — карточка без описания хуже карточки с английским. */
   async function beginRussian(mine: number, id: number): Promise<void> {
     for (let tryNo = 1; ; tryNo += 1) {
       const ask = await getRussianTitle(id)
@@ -762,7 +770,7 @@ export function useMediaCard(mediaId: Ref<number>): MediaCardView {
 
   /** Кладёт одну правку в память и обновляет показ. Синхронно и без сети: запись снимка уйдёт
    *  на диск отложенно. */
-  function send(kind: CardEdit, value: string | number): void {
+  function send(kind: CardEdit, value: string | number | null): void {
     if (mediaId.value === 0) return
 
     try {
@@ -801,6 +809,12 @@ export function useMediaCard(mediaId: Ref<number>): MediaCardView {
 
   function onPickNotes(value: string): void {
     send('notes', value)
+  }
+
+  /** Убрать тайтл из списка: запись уходит целиком — вместе с оценкой, счётом, датами и заметкой.
+   *  Местная правка: на сервере AniList запись остаётся, как и при удалении всего списка. */
+  function onPickRemove(): void {
+    send('remove', null)
   }
 
   return {
@@ -847,5 +861,6 @@ export function useMediaCard(mediaId: Ref<number>): MediaCardView {
     onPickStarted,
     onPickCompleted,
     onPickNotes,
+    onPickRemove,
   }
 }

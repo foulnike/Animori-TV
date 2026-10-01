@@ -68,11 +68,7 @@ function rememberBackOff(): void {
   })
 }
 
-/**
- * Восстанавливает отступ после запуска: пауза и глубина вместе, чтобы следующий
- * отказ удвоил накопленное. Остаток обрезается потолком роста — иначе переведённые
- * часы заперли бы программу.
- */
+/** Отступ после запуска: пауза и глубина вместе. Остаток обрезается потолком — переведённые часы заперли бы программу. */
 export async function restoreAniListPause(): Promise<void> {
   try {
     const [storedPause, storedStreak] = await Promise.all([
@@ -143,10 +139,7 @@ export function getAlToken(): string | null {
   return alTokenCache || null
 }
 
-/**
- * Сообщает, есть ли пропуск у оболочки; зовёт src/app/auth/session.ts.
- * Сам токен сюда не передаётся: пропуск в разметке появляться не должен.
- */
+/** Пропуск есть ли у оболочки; сам токен сюда не передаётся: он в разметке появляться не должен. */
 export function setShellSigned(value: boolean): void {
   if (shellSigned === value) return
 
@@ -173,10 +166,7 @@ function headerNumber(headers: Record<string, string>, name: string): number {
   return raw ? parseInt(raw, 10) : NaN
 }
 
-/**
- * Заголовки, по которым разбирают отказ. 403 у AniList двусмыслен: так отвечают
- * и выключенный API, и защита перед сервером, и запрет по стране.
- */
+/** Заголовки, по которым разбирают отказ: 403 у AniList двусмыслен — это и выключенный API, и защита. */
 const FAILURE_HEADERS: readonly string[] = [
   'cf-ray',
   'cf-mitigated',
@@ -201,9 +191,8 @@ function failureDetails(headers: Record<string, string>): Record<string, string>
 }
 
 /**
- * Когда сбрасывается окно лимита, в миллисекундах Unix-времени.
- * Заголовок приходит и Unix-временем в секундах, и остатком секунд:
- * число меньше миллиарда — остаток.
+ * Когда сбрасывается окно лимита, в мс Unix-времени: заголовок приходит и полным
+ * временем в секундах, и остатком секунд — число меньше миллиарда и есть остаток.
  */
 function readResetAt(headers: Record<string, string>): number {
   const reset = headerNumber(headers, 'x-ratelimit-reset')
@@ -212,11 +201,7 @@ function readResetAt(headers: Record<string, string>): number {
   return reset > 1e9 ? reset * 1000 : Date.now() + reset * 1000
 }
 
-/**
- * Учит ограничитель по заголовкам ответа: потолок, остаток окна и время сброса.
- * Темп ведётся по остатку, а не по потолку: остаток учитывает уже потраченное,
- * и оставшееся растягивается ровно до сброса.
- */
+/** Темп ведётся по остатку, а не по потолку: остаток учитывает уже потраченное и тянется до сброса. */
 function learnRateHeaders(headers: Record<string, string>): void {
   const limit = headerNumber(headers, 'x-ratelimit-limit')
   if (Number.isFinite(limit) && limit > 0) anilistLimiter.applyCeiling(limit)
@@ -237,10 +222,7 @@ function learnRateHeaders(headers: Record<string, string>): void {
   anilistLimiter.pause(Math.min(wait + 500, 60000))
 }
 
-/**
- * Сколько ждать после 429. retry-after приходит и числом секунд, и датой по HTTP:
- * разбирать надо оба вида, иначе сервер называет срок, а мы идём раньше.
- */
+/** retry-after приходит и числом секунд, и датой по HTTP: разбирать надо оба вида. */
 function readRetryAfter(headers: Record<string, string>): number {
   const raw = header(headers, 'retry-after').trim()
   if (raw === '') return DEFAULT_RETRY_MS
@@ -287,9 +269,8 @@ function backOffAfterServerFailure(status: number): number {
 }
 
 /**
- * GraphQL-запрос к AniList с паузой после 429 и ограниченным числом повторов.
- * @param useAuth Подписывать ли запрос пропуском; без пропуска просьба понижается
- *   до публичной — работа без входа важнее полей, доступных только хозяину.
+ * GraphQL-запрос с паузой после 429 и ограниченным числом повторов. Без пропуска
+ * просьба понижается до публичной: работа без входа важнее полей, доступных только хозяину.
  */
 export async function anilistQuery<T = unknown>(
   query: string,

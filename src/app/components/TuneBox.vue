@@ -1,9 +1,6 @@
 <script setup lang="ts">
-// Музыка тайтла: темы с AnimeThemes, плеер один на весь блок. Полоса липнет к низу
-// окна — там уже оставлено поле в 72 px — и не отнимает строку у карточки; пульт,
-// список и громкость живут в окне за кнопкой справа. Список прокручивается (у One
-// Piece двенадцать тем). Стримингов три и стоят всегда: готовых адресов служба почти
-// не знает. Визуализатор идёт ровным ходом, не в такт: AnalyserNode требует CORS.
+// Музыка тайтла: темы с AnimeThemes, плеер один на весь блок. Полоса липнет к низу окна —
+// там оставлено поле в 72 px. Визуализатор идёт ровным ходом, не в такт: AnalyserNode требует CORS.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import { fetchMalThemes, type ThemeItem, type ThemeLink } from '@/api/animethemes'
@@ -190,9 +187,7 @@ function nextRow(): TuneRow | null {
 }
 
 /** Шаг по списку проигрываемых тем: +1 — следующая, −1 — предыдущая. Ход по кругу:
- * с последней «дальше» ведёт на первую — нажатие это явная просьба, и молчание на
- * последней читалось бы отказом. Перемешивание на шаг не влияет: кнопка обязана
- * вести в одно и то же место списка, иначе «назад» ведёт не туда, откуда пришли. */
+ *  с последней «дальше» ведёт на первую — молчание читалось бы отказом. */
 function stepBy(delta: 1 | -1): void {
   const list = sounds.value
   if (list.length < 2) return
@@ -1033,9 +1028,9 @@ onBeforeUnmount(stop)
   width: 26px;
 }
 
-.am-tune__step:hover,
+.am-tune__step:hover:where(:not(.am-lite *)),
 .am-tune__step:focus-visible,
-.am-tune__open:hover,
+.am-tune__open:hover:where(:not(.am-lite *)),
 .am-tune__open:focus-visible {
   color: var(--am-text);
   background: var(--am-fill-2);
@@ -1046,7 +1041,7 @@ onBeforeUnmount(stop)
   cursor: default;
 }
 
-.am-tune__step:disabled:hover {
+.am-tune__step:disabled:hover:where(:not(.am-lite *)) {
   background: none;
 }
 
@@ -1224,7 +1219,7 @@ onBeforeUnmount(stop)
   transition: color var(--am-fast) var(--am-ease);
 }
 
-.am-tune__hit:hover,
+.am-tune__hit:hover:where(:not(.am-lite *)),
 .am-tune__hit:focus-visible {
   color: var(--am-text);
 }
@@ -1400,8 +1395,8 @@ onBeforeUnmount(stop)
     transform var(--am-fast) var(--am-ease);
 }
 
-.am-tune__seek:hover .am-tune__knob,
-.am-tune__vol:hover .am-tune__knob,
+.am-tune__seek:hover:where(:not(.am-lite *)) .am-tune__knob,
+.am-tune__vol:hover:where(:not(.am-lite *)) .am-tune__knob,
 .am-tune__seek--hold .am-tune__knob {
   box-shadow: 0 0 0 5px rgb(var(--am-sakura-rgb) / 0.26);
   transform: translate(-50%, -50%) rotate(38deg) scale(1.1);
@@ -1451,7 +1446,7 @@ onBeforeUnmount(stop)
     background-color var(--am-fast) var(--am-ease);
 }
 
-.am-tune__tool:hover,
+.am-tune__tool:hover:where(:not(.am-lite *)),
 .am-tune__tool:focus-visible {
   color: var(--am-text);
   background: var(--am-fill-2);
@@ -1464,7 +1459,7 @@ onBeforeUnmount(stop)
   opacity: 0.4;
 }
 
-.am-tune__tool:disabled:hover {
+.am-tune__tool:disabled:hover:where(:not(.am-lite *)) {
   background: none;
 }
 
@@ -1522,7 +1517,7 @@ onBeforeUnmount(stop)
   transition: background-color var(--am-fast) var(--am-ease);
 }
 
-.am-tune__item:hover {
+.am-tune__item:hover:where(:not(.am-lite *)) {
   background: var(--am-fill-1);
 }
 
@@ -1567,8 +1562,8 @@ onBeforeUnmount(stop)
   transition: opacity var(--am-fast) var(--am-ease);
 }
 
-.am-tune__item:hover .am-tune__tunes,
-.am-tune__item:hover .am-tune__acts,
+.am-tune__item:hover:where(:not(.am-lite *)) .am-tune__tunes,
+.am-tune__item:hover:where(:not(.am-lite *)) .am-tune__acts,
 .am-tune__item:focus-within .am-tune__tunes,
 .am-tune__item:focus-within .am-tune__acts {
   opacity: 1;
@@ -1592,7 +1587,7 @@ onBeforeUnmount(stop)
     transform var(--am-fast) var(--am-ease);
 }
 
-.am-tune__jump:hover,
+.am-tune__jump:hover:where(:not(.am-lite *)),
 .am-tune__jump:focus-visible {
   background: var(--am-fill-2);
   transform: scale(1.08);
@@ -1621,7 +1616,7 @@ onBeforeUnmount(stop)
     background-color var(--am-fast) var(--am-ease);
 }
 
-.am-tune__act:hover:not(:disabled),
+.am-tune__act:hover:where(:not(.am-lite *)):not(:disabled),
 .am-tune__act:focus-visible {
   color: var(--am-text);
   background: var(--am-fill-2);
@@ -1759,13 +1754,13 @@ onBeforeUnmount(stop)
     animation: none;
   }
 
-  .am-tune__seek:hover .am-tune__knob,
-  .am-tune__vol:hover .am-tune__knob,
+  .am-tune__seek:hover:where(:not(.am-lite *)) .am-tune__knob,
+  .am-tune__vol:hover:where(:not(.am-lite *)) .am-tune__knob,
   .am-tune__seek--hold .am-tune__knob {
     transform: translate(-50%, -50%);
   }
 
-  .am-tune__jump:hover,
+  .am-tune__jump:hover:where(:not(.am-lite *)),
   .am-tune__jump:focus-visible {
     transform: none;
   }

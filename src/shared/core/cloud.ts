@@ -31,7 +31,7 @@ import { saveSnapshotNow, SNAPSHOT_VERSION } from './snapshot'
 const FILE_PATH = `${DISK_APP_ROOT}/${CLOUD_FILE}`
 
 // Где копия лежит с точки зрения человека. Имя папки Диск берёт из названия приложения
-// в OAuth, а не из наших констант: совпадение с CLOUD_DIR — договорённость, а не гарантия.
+// в OAuth, а не из наших констант: совпадение с CLOUD_DIR — договорённость.
 export const CLOUD_PATH = `Приложения/${CLOUD_DIR}/${CLOUD_FILE}`
 
 // Исход облачного действия: та же форма, что у клиента Диска — человеку нужна
@@ -45,8 +45,8 @@ export interface CloudSaved {
   savedAt: number
 }
 
-// Что лежит в облаке вместо нашей копии. Нужно для вопроса человеку: решать судьбу
-// чужой записи вслепую он не должен.
+// Что лежит в облаке вместо нашей копии. Нужно для вопроса человеку: судьбу чужой
+// записи он не должен решать вслепую.
 export interface CloudStranger {
   bytes: number
   /** Время правки со стороны облака (ISO 8601) или null. */
@@ -96,15 +96,15 @@ export interface CloudApplied extends CloudCounts {
 }
 
 // Итог приложения вместе с двумя числами самого файла. Внутреннее: числа нужны
-// только pullCopy, чтобы обновить отметку о своей копии в облаке.
+// pullCopy, чтобы обновить отметку о своей копии.
 interface AppliedCopy {
   applied: CloudApplied
   savedAt: number
   count: number
 }
 
-// Какой пропуск брать сейчас, или отказ словами. Синхронно и без сети: пропуск Диска
-// вставляют руками, и живёт он месяцами — продлевать его не нужно и нечем.
+// Какой пропуск брать сейчас, или отказ словами. Синхронно: пропуск Диска вставляют
+// руками, и живёт он месяцами — продлевать его не нужно и нечем.
 function pass(): CloudDone<string> {
   if (settings.cloudPlace === 'yandex') {
     const token = settings.cloudToken.trim()
@@ -125,14 +125,14 @@ function pass(): CloudDone<string> {
   return { ok: false, problem: 'Облако не выбрано: укажите место в настройках' }
 }
 
-// Есть ли чем ходить в облако. Нужно экрану, чтобы гасить кнопки, поэтому ответ
-// мгновенный и сети не касается: годен ли пропуск, знает только облако (checkChosenPlace()).
+// Есть ли чем ходить в облако. Ответ мгновенный и сети не касается: годен ли пропуск,
+// знает только облако (checkChosenPlace()).
 export function cloudReady(): boolean {
   return settings.cloudPlace === 'yandex' && settings.cloudToken.trim() !== ''
 }
 
-// Проверяет вставленный пропуск, не сохраняя его. Зовётся в момент вставки: лучше
-// сказать «не годится» сразу, чем молча запомнить строку и отказать потом.
+// Проверяет вставленный пропуск, не сохраняя его. Лучше сказать «не годится» сразу,
+// чем молча запомнить строку и отказать потом.
 export async function checkPlace(token: string): Promise<CloudDone<true>> {
   const done = await diskCheck(token)
   if (!done.ok) return done
@@ -151,9 +151,8 @@ export async function checkChosenPlace(): Promise<CloudDone<true>> {
   return { ok: true, value: true }
 }
 
-// Меняет место копии. Всё, что относилось к прежнему месту, забывается здесь же:
-// метка знакомой копии (у нового места свой файл и свои часы) и числа последней копии
-// (панель иначе обещала бы «812 записей, сохранено вчера»).
+// Меняет место копии. Прежнему месту принадлежало и то, и другое: метка знакомой копии
+// и числа последней копии (панель иначе обещала бы «812 записей, сохранено вчера»).
 export async function choosePlace(place: CloudPlace): Promise<void> {
   if (settings.cloudPlace === place) return
 
@@ -170,24 +169,21 @@ export function cloudPathText(): string {
   return settings.cloudPlace === 'yandex' ? CLOUD_PATH : ''
 }
 
-// Запоминает время правки файла, каким его назвало облако. Зовётся после каждого
-// своего касания копии — и записи, и чтения. Неудача запроса пишет пустоту, а не
-// прежнее значение: пустота значит «не знаем», и следующая запись переспросит человека.
+// Запоминает время правки файла, каким его назвало облако, — и после своей записи, и
+// после чтения. Неудача пишет пустоту, а не прежнее значение: пустота значит «не знаем».
 async function rememberSeen(token: string): Promise<void> {
   const seen = await diskStat(token, FILE_PATH)
   const mark = seen.ok && seen.value !== null ? (seen.value.modified ?? '') : ''
   await saveSetting('cloudSeenModified', 'am_cloud_seen_modified', mark)
 }
 
-// Собирает список и кладёт копию в облако, замещая прежнюю.
-// @param device Метка устройства для человека («Windows», «ТВ»): ядро про площадку не знает.
-// @param force «Замещать, даже если в облаке незнакомая копия» — после вопроса человеку.
+// Собирает список и кладёт копию в облако, замещая прежнюю. `device` — метка устройства
+// для человека («Windows», «ТВ»). `force` снимает вопрос о незнакомой копии.
 export async function saveCopy(device: string, force = false): Promise<CloudSaveDone> {
   const token = pass()
   if (!token.ok) return token
 
-  // Список обязан быть поднят: иначе в облако уедет пустота вместо списка,
-  // который ещё лежит на диске и не прочитан.
+  // Список обязан быть поднят: иначе в облако уедет пустота вместо списка на диске.
   await initCollection()
 
   let built
@@ -206,8 +202,7 @@ export async function saveCopy(device: string, force = false): Promise<CloudSave
     }
   }
 
-  // Сторож перед записью. Один дешёвый запрос перед заливкой в сотни килобайт —
-  // цена, которую не стоит и обсуждать.
+  // Сторож перед записью: один дешёвый запрос перед заливкой в сотни килобайт.
   if (!force) {
     const there = await diskStat(token.value, FILE_PATH)
     if (!there.ok) return there
@@ -227,8 +222,8 @@ export async function saveCopy(device: string, force = false): Promise<CloudSave
   const sent = await diskUpload(token.value, FILE_PATH, built.text)
   if (!sent.ok) return sent
 
-  // Отметка о копии пишется ПОСЛЕ успеха: обещание копии, которой нет, хуже
-  // отсутствия копии — на первое человек полагается.
+  // Отметка о копии пишется ПОСЛЕ успеха: обещание копии, которой нет, хуже её
+  // отсутствия — на первое человек полагается.
   await saveSetting('cloudSavedAt', 'am_cloud_saved_at', built.file.savedAt)
   await saveSetting('cloudSavedCount', 'am_cloud_saved_count', built.file.count)
   await rememberSeen(token.value)
@@ -241,8 +236,7 @@ export async function saveCopy(device: string, force = false): Promise<CloudSave
   }
 }
 
-// Спрашивает облако, что там лежит. Нужно до восстановления: решать судьбу своего
-// списка вслепую человек не должен. Заодно отдаёт публичную ссылку, если копия опубликована.
+// Спрашивает облако, что там лежит. Заодно отдаёт публичную ссылку, если копия опубликована.
 export async function copyInfo(): Promise<CloudDone<CloudInfo>> {
   const token = pass()
   if (!token.ok) return token
@@ -285,8 +279,8 @@ export async function unshareCopy(): Promise<CloudDone<true>> {
   return { ok: true, value: true }
 }
 
-// Что лежит по чужой ссылке. Пропуска не требует — на этом держится холодный старт.
-// Показать размер и время обязательно: замена списка вслепую по строке с пульта — способ его потерять.
+// Что лежит по чужой ссылке. Пропуска не требует — на этом держится холодный старт. Размер
+// и время показать обязательно: замена списка вслепую по строке с пульта — способ его потерять.
 export async function linkInfo(link: string): Promise<CloudDone<CloudLink>> {
   const found = await publicInfo(link)
   if (!found.ok) return found
@@ -301,9 +295,8 @@ export async function linkInfo(link: string): Promise<CloudDone<CloudLink>> {
   }
 }
 
-// Сливает копию с памятью по времени правки — тем же правилом, что перенос с сервера.
-// При равных метках остаётся местная запись (копия — слепок нашего же списка, равная
-// метка значит ту же правку, а не спор). Записи, которых в копии нет, остаются на месте.
+// Сливает копию с памятью по времени правки. При равных метках остаётся местная запись:
+// копия — слепок нашего же списка, равная метка значит ту же правку, а не спор.
 function mergeFromCopy(file: CloudFile): CloudCounts {
   let added = 0
   let updated = 0
@@ -353,11 +346,10 @@ function mergeFromCopy(file: CloudFile): CloudCounts {
   return { total: entryCount(), added, updated, kept, onlyHere }
 }
 
-// Замещает память копией целиком. Нужен для переезда на чистое устройство и при
-// переносе чужого списка, где слияние дало бы кашу из двух жизней.
+// Замещает память копией целиком. Нужен при переносе чужого списка, где слияние дало бы
+// кашу из двух жизней.
 function replaceFromCopy(file: CloudFile): CloudCounts {
-  // Номера собираются заранее: dropEntry правит ту же карту, по которой идёт обход,
-  // а удалять по живому итератору нельзя.
+  // Номера собираются заранее: dropEntry правит ту же карту, по которой идёт обход.
   const gone = Array.from(eachEntry(), (entry) => entry.mediaId)
   for (const mediaId of gone) dropEntry(mediaId)
   for (const entry of file.entries) putEntry(entry)
@@ -371,9 +363,8 @@ function replaceFromCopy(file: CloudFile): CloudCounts {
   }
 }
 
-// Прикладывает прочитанную копию к списку: один порядок для обоих путей (своя по пропуску,
-// чужая по ссылке). Чужая копия не сливается: метки времени двух людей между собой ничего
-// не значат. Пустая копия не замещает живой список — для стирания есть отдельная кнопка.
+// Прикладывает прочитанную копию к списку: один порядок для обоих путей. Чужая копия не
+// сливается: метки времени двух людей ничего друг о друге не знают.
 async function applyText(text: string, mode: PullMode): Promise<CloudDone<AppliedCopy>> {
   const read = parseCloudFile(text, SNAPSHOT_VERSION)
   if (!read.ok) return { ok: false, problem: read.problem }
@@ -439,7 +430,7 @@ export async function pullCopy(mode: PullMode): Promise<CloudDone<CloudApplied>>
   if (!done.ok) return done
 
   // Копия, которую только что прочли, с этого момента знакомая: сохранение поверх неё
-  // спрашивать не должно. Числа на панели перестают говорить о прошлой своей записи.
+  // спрашивать не должно.
   await saveSetting('cloudSavedAt', 'am_cloud_saved_at', done.value.savedAt)
   await saveSetting('cloudSavedCount', 'am_cloud_saved_count', done.value.count)
   await rememberSeen(token.value)
@@ -447,9 +438,8 @@ export async function pullCopy(mode: PullMode): Promise<CloudDone<CloudApplied>>
   return { ok: true, value: done.value.applied }
 }
 
-// Забирает список по короткой ссылке и прикладывает к своему. Ни пропуска, ни выбранного
-// места не требует: это единственный путь, доступный на устройстве, где набирать нечем.
-// Отметки о своей копии не трогаются нарочно: у читателя своей копии в облаке нет.
+// Забирает список по короткой ссылке: ни пропуска, ни выбранного места не требует.
+// Отметки о своей копии не трогаются: у читателя своей копии в облаке нет.
 export async function pullByLink(key: string, mode: PullMode): Promise<CloudDone<CloudApplied>> {
   await initCollection()
 

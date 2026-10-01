@@ -1,8 +1,7 @@
 <script setup lang="ts">
-// Люди аниме под двумя колонками карточки. Добыча своя: ответ тяжелее карточки. Окошко человека
-// не здесь, а в общем слое (person-layer.ts) — человека открывает и ссылка из описания.
-// Подпись режется по двум строкам: ширина трека жёсткая, а слитное имя иначе вылезало за плитку.
-import { computed, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue'
+// Люди аниме под двумя колонками карточки. Окошко человека — в общем слое person-layer.ts.
+// Подпись режется по двум строкам: ширина трека жёсткая, слитное имя вылезало за плитку.
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue'
 
 import { fetchMalIds } from '@/api/anilist-media'
 import {
@@ -22,13 +21,15 @@ import { settings } from '@/core/settings'
 import { Logger } from '@/utils/logger'
 
 import { openPerson } from '../person-layer'
+import { gridCols, wholeRows } from '../grid-fit'
 
 import { CREW_WORDS } from './crew-words'
 
 const props = defineProps<{ mediaId: number }>()
 
 /** Сколько авторов видно до раскрытия хвоста. Восемь, а не шесть: сетка встаёт в четыре колонки,
- * и шесть плиток оставляли второй ряд наполовину пустым. */
+ * и шесть плиток оставляли второй ряд наполовину пустым. Это десктопная норма и только отправная
+ * точка: на приставке колонок девять, и восемь занимали один ряд на девять с пустым слотом. */
 const STAFF_HEAD = 8
 
 /** Сколько заглушек класть на полку, пока люди едут. */
@@ -54,11 +55,28 @@ let run = 0
 /** Русские имена, добытые фоном: ключ — `${kind}:${personId}`. */
 const russian = shallowReactive(new Map<string, RussianPerson>())
 
+/** Сетка авторов: нужна, чтобы узнать, сколько колонок в неё влезло. */
+const crewBox = ref<HTMLElement | null>(null)
+
+/** Колонок в сетке авторов по факту. Пока сетки не было в разметке — ноль, и норма остаётся прежней. */
+const crewCols = ref(0)
+
+/** Сколько авторов показывать свёрнутыми: целое число рядов от десктопной нормы. */
+const crewHead = computed<number>(() => wholeRows(STAFF_HEAD, crewCols.value))
+
+/** Меряем колонки по готовой раскладке, после того как Vue поставит сетку в разметку. */
+async function measureCrew(): Promise<void> {
+  await nextTick()
+  const found = gridCols(crewBox.value)
+  // Пока колонки не измерились, держим прежнюю норму: показать надо что-то, а не ноль плиток.
+  if (found > 0) crewCols.value = found
+}
+
 const shownCrew = computed<StaffRef[]>(() =>
-  wide.value ? crew.value : crew.value.slice(0, STAFF_HEAD),
+  wide.value ? crew.value : crew.value.slice(0, crewHead.value),
 )
 
-const hiddenCrew = computed<number>(() => Math.max(0, crew.value.length - STAFF_HEAD))
+const hiddenCrew = computed<number>(() => Math.max(0, crew.value.length - crewHead.value))
 
 const empty = computed<boolean>(() => folk.value.length === 0 && crew.value.length === 0)
 
@@ -187,6 +205,9 @@ function onShow(kind: PersonKind, person: PersonRef): void {
 
 onMounted(() => {
   void load()
+  // Сетка авторов может быть уже в разметке, а может и нет — тогда колонки неизмеримы, и норма
+  // остаётся прежней до появления состава.
+  void measureCrew()
 })
 
 onBeforeUnmount(() => {
@@ -199,6 +220,12 @@ watch(
     void load()
   },
 )
+
+// Состав приходит из сети, и только с ним Vue ставит сетку в разметку. Переход на другое аниме
+// пересобирает её целиком, поэтому меряем и тут: колонки могли не уложиться в прежние.
+watch(crew, () => {
+  void measureCrew()
+})
 </script>
 
 <template>
@@ -213,7 +240,8 @@ watch(
     <div v-if="folk.length > 0" class="am-panel am-folk">
       <h3 class="am-h3">Персонажи</h3>
 
-      <div class="am-rail">
+      <!-- data-am-row: вход с полки франшизы встаёт на первого персонажа, а не на того, кто оказался под курсором (dpad.ts). -->
+      <div class="am-rail am-cards" data-am-row>
         <article v-for="person in folk" :key="person.personId" class="am-face">
           <button
             v-tip="personHint('character', person)"
@@ -265,7 +293,7 @@ watch(
         </button>
       </div>
 
-      <div class="am-crew">
+      <div ref="crewBox" class="am-crew">
         <button
           v-for="person in shownCrew"
           :key="`${person.personId}-${person.role ?? ''}`"
@@ -299,10 +327,9 @@ watch(
 </template>
 
 <style scoped>
-/* Ширина лица одним токеном: трек полки, плитка и заглушка иначе повторяли бы 132px три раза и расходились. */
+/* Ширина лица одним токеном: трек полки, плитка и заглушка иначе повторяли бы цифру три раза и
+   расходились. Сам токен живёт в :root (theme.css): на том же размере идёт полка франшизы. */
 .am-folk {
-  --am-face: clamp(112px, 8.5vw, 156px);
-
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -319,88 +346,13 @@ watch(
 .am-folk .am-h3 {
 }
 
-/* Общая полка растягивает треки на всю ширину: при горсти лиц это разнос. */
+
+/* Мягкий сход у правого края: полка длинная и без подсказки обрывалась бы на полуплитке.
+   Размер трека — общий, в `.am-cards` (theme.css): он один на персонажей и на франшизу. */
 .am-folk .am-rail {
-  grid-auto-columns: var(--am-face);
-  justify-content: start;
   mask-image: linear-gradient(to right, #000 94%, transparent);
 }
 
-/* Персонажи полкой, а не сеткой: их бывает два десятка, и сетка утопила бы панель записи в самый низ экрана. */
-.am-face {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.am-face__hit {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  background: none;
-  border: 0;
-}
-
-/* Обойма портрета держит капсулу роли и режет её по форме. */
-.am-face__frame {
-  position: relative;
-  display: block;
-  overflow: hidden;
-  border: 1px solid var(--am-line-soft);
-  border-radius: var(--am-r-leaf);
-  transition:
-    transform var(--am-mid) var(--am-ease),
-    border-color var(--am-fast) var(--am-ease),
-    border-radius var(--am-mid) var(--am-ease);
-}
-
-.am-face__hit:hover .am-face__frame,
-.am-face__hit:focus-visible .am-face__frame {
-  transform: translateY(-3px);
-  border-color: rgb(var(--am-accent-rgb) / 0.55);
-  border-radius: var(--am-r-drop);
-}
-
-.am-face__art {
-  display: block;
-  width: 100%;
-  aspect-ratio: 2 / 3;
-  object-fit: cover;
-  background: var(--am-fill-2);
-}
-
-.am-face__art--empty {
-  display: grid;
-  place-items: center;
-  font-size: 28px;
-  color: var(--am-faint);
-}
-
-/* Роль — капсула на портрете, а не третья серая строка под именем. */
-.am-face__role {
-  position: absolute;
-  bottom: 6px;
-  left: 6px;
-  max-width: calc(100% - 12px);
-  padding: 2px 8px;
-  overflow: hidden;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--am-text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: color-mix(in srgb, var(--am-veil) 72%, transparent);
-  border-radius: var(--am-r-cap);
-  backdrop-filter: blur(6px);
-}
 
 .am-face__wait {
   width: var(--am-face);
@@ -408,31 +360,6 @@ watch(
   border-radius: var(--am-r-leaf);
 }
 
-/* Две строки и ни пикселем больше. anywhere рвёт слитное имя без пробелов: без этого такое слово
-   шире трека и ложится поверх соседней плитки. Целиком имя остаётся в подсказке. */
-.am-face__name {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-
-/* Озвучка бледнее имени (второй человек в той же плитке) и режется так же. Это подпись, а не кнопка:
-   `cursor` и цвет по наведению убраны — подпись, похожую на кнопку, на пульте принимают за цель. */
-.am-face__voice {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  width: 100%;
-  overflow: hidden;
-  font-size: 12px;
-  color: var(--am-dim);
-  overflow-wrap: anywhere;
-}
 
 /* Авторов единицы: полка из четырёх плиток смотрелась бы обрубком. */
 .am-crew {
@@ -460,7 +387,7 @@ watch(
     transform var(--am-fast) var(--am-ease);
 }
 
-.am-mate:hover,
+.am-mate:hover:where(:not(.am-lite *)),
 .am-mate:focus-visible {
   background: var(--am-hover);
   border-color: rgb(var(--am-accent-rgb) / 0.45);
@@ -507,9 +434,9 @@ watch(
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .am-face__hit:hover .am-face__frame,
+  .am-face__hit:hover:where(:not(.am-lite *)) .am-face__frame,
   .am-face__hit:focus-visible .am-face__frame,
-  .am-mate:hover,
+  .am-mate:hover:where(:not(.am-lite *)),
   .am-mate:focus-visible {
     transform: none;
   }

@@ -1,7 +1,6 @@
 <script setup lang="ts">
-// Экран истории: всё, что смотрели, свежее вперёд и по дням. Записи пишет плеер, экран только показывает.
-// Снимок, а не запрос: заголовок и обложка едут в записи, русские имена догоняют фоном.
-// Дни считаются по местным суткам; доля просмотренного берётся из записи, а не по счёту серий.
+// Экран истории: всё, что смотрели, свежее вперёд и по дням. Снимок, а не запрос: заголовок и обложка
+// едут в записи, русские имена догоняют фоном, доля просмотренного берётся из записи.
 
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
@@ -46,10 +45,8 @@ function railKey(event: KeyboardEvent): void {
   const hit = row.querySelector<HTMLButtonElement>('.am-hist__hit')
   if (hit === null) return
 
-// Переводим фокус сами и синхронно, в фазе перехвата, и глушим событие полностью: spatial
-// nav WebView работает по геометрии и от крестика уводит не туда. Синхронность обязательна:
-// вариант с setTimeout давал правильный конечный элемент, но между фокусами мелькала кнопка
-// «Очистить» — 31 мс мельтешения и два броска прокрутки. Гасим событие до nav.
+// Фокус переводим сами, синхронно и в фазе перехвата, и глушим событие: spatial nav WebView
+// работает по геометрии и от крестика уводит не туда. С setTimeout мелькала кнопка «Очистить».
   const move = (to: HTMLElement | null): void => {
     if (to === null || to === active) return
     event.preventDefault()
@@ -536,18 +533,18 @@ onBeforeUnmount(() => {
   padding-bottom: 14px;
 }
 
-.am-hist__hit:hover,
+.am-hist__hit:hover:where(:not(.am-lite *)),
 .am-hist__hit:focus-visible {
   background: var(--am-hover);
   border-color: rgb(var(--am-accent-rgb) / 0.45);
 }
 
-.am-hist__hit:hover .am-hist__name,
+.am-hist__hit:hover:where(:not(.am-lite *)) .am-hist__name,
 .am-hist__hit:focus-visible .am-hist__name {
   color: var(--am-accent);
 }
 
-.am-hist__hit:hover .am-hist__go,
+.am-hist__hit:hover:where(:not(.am-lite *)) .am-hist__go,
 .am-hist__hit:focus-visible .am-hist__go {
   color: var(--am-accent);
   background: var(--am-fill-2);
@@ -626,10 +623,8 @@ onBeforeUnmount(() => {
     border-color var(--am-fast) var(--am-ease);
 }
 
-/* Полоса пройденного тянется до правого края строки: короткий отрезок посреди строки не давал
-   шкалы. width: auto тут обязателен: общий .am-line объявлен на всю ширину, а у абсолютной
-   коробки заданная ширина сильнее правого отступа — right отбрасывался. Слева полоса начинается
-   от текста: постер выше полосы и перекрывал бы её левый конец. */
+/* Полоса пройденного тянется до правого края строки, и width: auto тут обязателен: у абсолютной коробки
+   заданная ширина сильнее правого отступа. Слева полоса начинается от текста — постер её перекрывает. */
 .am-hist__line {
   position: absolute;
   right: 52px;
@@ -667,12 +662,12 @@ onBeforeUnmount(() => {
   transform: translateY(-50%);
 }
 
-.am-hist__row:hover .am-hist__drop,
+.am-hist__row:hover:where(:not(.am-lite *)) .am-hist__drop,
 .am-hist__row:focus-within .am-hist__drop {
   opacity: 1;
 }
 
-.am-hist__drop:hover,
+.am-hist__drop:hover:where(:not(.am-lite *)),
 .am-hist__drop:focus-visible {
   color: var(--am-bad);
   background: var(--am-hover);

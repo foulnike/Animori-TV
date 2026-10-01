@@ -4,6 +4,8 @@
 
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
+import { pushBackStop } from '../back-stop'
+
 const props = defineProps<{
   /** Открыта ли модалка. */
   open: boolean
@@ -22,9 +24,8 @@ function onClose(): void {
 /// с трёх метров видно, что страница поехала, и до конца справки — десяток нажатий.
 const STEP = 60
 
-/** Клавиши внутри справки: Esc закрывает, стрелки листают текст. Листаем сами, а не отдаём обходу:
- * пульт доводит прокрутку до элемента под фокусом, а фокус стоит на крестике в шапке, и тело
- * справки ему не предок. `stopPropagation` обязателен: обход пульта слушает то же нажатие на window. */
+/** Клавиши внутри справки: Esc закрывает, стрелки листают текст. Листаем сами, а не
+ *  отдаём обходу: фокус стоит на крестике, и тело справки ему не предок. */
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     onClose()
@@ -46,6 +47,11 @@ function onKey(e: KeyboardEvent): void {
   box.scrollBy({ top: step, behavior: 'smooth' })
 }
 
+// Шаг «Назад» ставится только на время модалки: справка открывается поверх окна настроек,
+// и без своей записи аппаратная кнопка снимала бы разом оба — стопов в очереди два,
+// а закрывается последний поставленный.
+let stopBack: (() => void) | null = null
+
 // Слушатель живёт только пока модалка открыта: висящий на document обработчик закрытого
 // окна перехватывал бы Esc у экранов под ним.
 watch(
@@ -53,10 +59,19 @@ watch(
   (open) => {
     if (!open) {
       document.removeEventListener('keydown', onKey)
+      stopBack?.()
+      stopBack = null
       return
     }
 
     document.addEventListener('keydown', onKey)
+
+    if (stopBack === null) {
+      stopBack = pushBackStop(function () {
+        onClose()
+        return true
+      })
+    }
 
 // Фокус переезжает в текст справки. Без этого он остаётся на кнопке «i» под окном: обход пульта
 // ограничил бы себя окном, а фокус стоял снаружи, и первое нажатие стрелки ушло бы в никуда.
@@ -66,6 +81,8 @@ watch(
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKey)
+  stopBack?.()
+  stopBack = null
 })
 </script>
 
@@ -88,7 +105,7 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- tabindex у тела: с фокусом на нём пульт видит, что находится внутри окна, и не считает окно пустым. -->
-        <div ref="body" class="am-modal__body" tabindex="0">
+        <div ref="body" class="am-modal__body" tabindex="0" data-am-seed>
           <p>
             Пропуск облака выдают в браузере, а на телевизоре его не набрать. Поэтому ссылку делает
             компьютер, а телевизор забирает по ней копию.
@@ -225,15 +242,14 @@ onBeforeUnmount(() => {
     border-color var(--am-fast) var(--am-ease);
 }
 
-.am-modal__x:hover {
+.am-modal__x:hover:where(:not(.am-lite *)) {
   color: var(--am-text);
   background: var(--am-hover);
   border-color: rgb(var(--am-accent-rgb) / 0.45);
 }
 
-/* Текст справки прокручивается внутри рамки: шаги все нужны, резать их на страницы незачем.
-   `min-height: 0` обязателен: в гибкой колонке элемент по умолчанию не сжимается ниже содержимого,
-   и `overflow-y: auto` такому блоку ничего не даёт — он выталкивает рамку за экран. */
+/* Текст справки прокручивается внутри рамки. `min-height: 0` обязателен: в гибкой колонке
+   блок не сжимается ниже содержимого, и `overflow-y` не даёт ничего — рамка уходит за экран. */
 .am-modal__body {
   display: flex;
   flex-direction: column;

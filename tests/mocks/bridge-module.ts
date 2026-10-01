@@ -1,14 +1,8 @@
 import { createMockBridge, type MockBridgeHandle } from './bridge'
 
 /**
- * Подменяет весь модуль `@/bridge`, поэтому обязан повторять его вывеску:
- * код, который берёт отсюда не только `Bridge`, получит `undefined` и упадёт
- * на первом же `instanceof`. Так и было с `BridgeHttpError`: `api/anilist`
- * различает по нему отказ транспорта и отказ самого моста, а в проверках
- * любая сетевая ошибка превращалась в `TypeError: Right-hand side of
- * 'instanceof' is not an object` — то есть проверялся не тот путь.
- *
- * Класс берётся настоящий: сравнение по нему идёт в рабочем коде.
+ * Вывеска повторяется целиком: без `BridgeHttpError` код, различающий отказ транспорта и
+ * отказ моста, падает на `instanceof` и проверяет не тот путь. Класс настоящий.
  */
 export { BridgeHttpError } from '../../src/shared/bridge/IBridge'
 

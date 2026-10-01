@@ -1,6 +1,5 @@
-// Резолвер русского названия и описания: основной источник, затем фоллбэк; настройки читаются в момент вызова.
+// Резолвер русского названия и описания: основной источник, затем фоллбэк, настройки читаются в момент вызова.
 // Описание отдаётся как приехало, с разметкой источника: разбирает core/rich-text.ts на слое показа.
-// Карточка Шикимори — через общего добытчика: иначе на одно открытие уходит два одинаковых запроса.
 
 import { settings } from '../core/settings'
 import { fetchShikiAnime } from './shikimori-media'
@@ -27,11 +26,7 @@ function textOrNull(value: string | null | undefined): string | null {
   return clean === '' ? null : clean
 }
 
-/**
- * Резолвит русское название и описание по цепочке источников.
- *
- * Адреса всегда анимешные: раздела манги у нас больше нет.
- */
+/** Резолвит русское название и описание по цепочке источников; адреса всегда анимешные. */
 export async function resolveTitle(malId: number | null): Promise<ResolvedTitle | null> {
   const order = [...new Set([settings.titlePrimary, settings.titleFallback])].filter(
     (src) => src && src !== 'off' && src !== 'none',
