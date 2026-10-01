@@ -266,7 +266,7 @@ fn reply(mut stream: TcpStream, code: u16, kind: &str, body: &str) {
         "\r\nContent-Type: ",
         kind,
         "\r\nContent-Length: ",
-        &body.as_bytes().len().to_string(),
+        &body.len().to_string(),
         "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
     ]
     .concat();
