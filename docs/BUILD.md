@@ -41,7 +41,7 @@ adb shell getprop ro.product.cpu.abi
 jar:
 
 ```bash
-java -jar "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" sign \
+java -jar "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" sign \
   --ks "$HOME/.android/debug.keystore" --ks-key-alias androiddebugkey \
   --ks-pass pass:android --key-pass pass:android app.apk
 ```
@@ -64,9 +64,10 @@ java -jar "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" sign \
 два APK — `armv7` и `arm64` — каждый своим прогоном: Rust компилируется под
 каждую цель заново. Номер версии берётся из тега и сверяется с `package.json`;
 расхождение роняет прогон до сборки. Файлы подписываются ключом из секретов
-(`ANIMORI_KEYSTORE_BASE64` и три пароля к нему), проверяются `apksigner verify`
-и уходят в релиз под именами `AniMori_<версия>_<abi>.apk`. Имена окончательны:
-по ним приложение ищет обновление.
+(`ANIMORI_KEYSTORE_BASE64`, пароль хранилища, alias ключа и пароль ключа),
+проверяются `apksigner verify` и уходят в релиз под именами
+`AniMori_<версия>_<abi>.apk`. Имена окончательны: по ним приложение ищет
+обновление.
 
 Ключ выпуска постоянен: Android не примет обновление, подписанное другим ключом.
 Он лежит в секретах репозитория, эталон — `~/.android/animori-release.keystore`;

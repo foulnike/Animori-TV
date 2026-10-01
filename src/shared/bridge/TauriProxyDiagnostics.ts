@@ -1,5 +1,5 @@
 // Реализация IProxyDiagnostics для десктопа, вынесена из TauriBridge ради размера.
-// Инвариант 1 цел: файл внутри src/bridge, импортирует его только TauriBridge.
+// Инвариант 1 цел: файл внутри src/shared/bridge, импортирует его только TauriBridge.
 
 import { invoke } from '@tauri-apps/api/core'
 

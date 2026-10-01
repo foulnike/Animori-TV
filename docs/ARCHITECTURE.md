@@ -74,7 +74,7 @@
 `vite.config.ts`, `tsconfig.json`, `tsconfig.shared.json`; при расхождении
 сборка идёт, типы падают.
 
-Из кода вне `src/bridge` импортируют только `@/bridge`.
+Из кода вне `src/shared/bridge` импортируют только `@/bridge`.
 
 ## Экраны
 
@@ -83,8 +83,9 @@
 кольцо «назад».
 
 Девять экранов: `home`, `lists`, `history`, `search`, `media`, `studio`,
-`player`, `settings`, `log`. В меню пять: карточка, студия, плеер и журнал
-открываются из списков, поиска, карточки и адресом `#/log`.
+`player`, `settings`, `log`. В меню пять вкладок: Главная, Моё, История, Поиск,
+Настройки. Карточка, студия, плеер и журнал в меню не стоят: вход в них из
+списков, поиска, карточки и адресом `#/log`.
 
 Настройки — мозаика из шести плит (`components/SettingMark.vue`); панель
 открывается окном поверх экрана (`components/SettingsSheet.vue`).
@@ -97,16 +98,16 @@
 
 ## Оболочка
 
-| Команда                                      | Что делает                                   |
-| -------------------------------------------- | -------------------------------------------- |
-| `animori_reload`, `animori_restart`          | перезагрузить окно, перезапустить приложение |
-| `animori_open_external`                      | отдать адрес системе                         |
-| `animori_auth_start/_submit/_status/_logout` | вход в AniList                               |
-| `animori_anilist_query`                      | запрос к AniList из процесса оболочки        |
-| `animori_file_read/_write`                   | чтение и запись своих файлов                 |
-| `animori_export_pick_dir/_write`             | выгрузка списка файлом                       |
-| `animori_track_pick_dir/_write`              | выгрузка трека темы                          |
-| `animori_proxy_status/_probe`                | состояние и проба прокси канала окна         |
+| Команда                                           | Что делает                                   |
+| ------------------------------------------------- | -------------------------------------------- |
+| `animori_reload`, `animori_restart`               | перезагрузить окно, перезапустить приложение |
+| `animori_open_external`                           | отдать адрес системе                         |
+| `animori_auth_start/_submit/_status/_logout`      | вход в AniList                               |
+| `animori_anilist_query`                           | запрос к AniList из процесса оболочки        |
+| `animori_file_read/_write`                        | чтение и запись своих файлов                 |
+| `animori_export_pick_dir`, `animori_export_write` | выгрузка списка файлом                       |
+| `animori_track_pick_dir`, `animori_track_write`   | выгрузка трека темы                          |
+| `animori_proxy_status/_probe`                     | состояние и проба прокси канала окна         |
 
 Права — один файл `src-tauri/capabilities/default.json`. Список адресов в нём
 окончателен: промах плагин отклоняет до сети.
@@ -135,4 +136,4 @@
 один — Android.
 
 Из него же `canOpenOutside()`: на приставке браузера нет. Что глушится — в
-`theme.css` у `.am-lite`, см. `INTERFACE.md`.
+`app/styles/theme.css` у `.am-lite`, см. `INTERFACE.md`.
