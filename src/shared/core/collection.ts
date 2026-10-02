@@ -222,6 +222,8 @@ function replaceFromServer(raw: RawListEntry[]): PullResult {
   }
 }
 
+// Зовёт только настольное приложение: на приставке переноса с AniList нет. Общее ядро
+// такие места не выбрасывает — см. cloud.ts, saveCopy.
 /** Переносит список с сервера в память, по умолчанию слиянием. Без входа переносить
  * неоткуда, и это отказ, а не тихий ноль. */
 export async function refreshFromServer(mode: PullMode = 'merge'): Promise<PullResult> {

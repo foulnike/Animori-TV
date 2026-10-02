@@ -66,6 +66,8 @@ function titleOf(entry: SnapshotEntry): string {
   return entry.english ?? entry.romaji ?? `Anime #${entry.mediaId}`
 }
 
+// Зовёт только настольное приложение: на приставке выгрузки списка нет. Общее ядро такие
+// места не выбрасывает — см. cloud.ts, saveCopy.
 /** Собирает выгрузку. Порядок — по номеру MAL: две выгрузки одного списка должны совпадать
  * байт в байт. Поле series_episodes не пишется: чисел серий в снимке нет. */
 export function buildMalXml(input: MalXmlInput): MalXmlResult {
