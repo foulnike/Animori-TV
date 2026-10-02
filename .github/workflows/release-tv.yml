@@ -1,4 +1,4 @@
-# Запуск только по тегу `tv-*`. Номер сверяется с package.json. Имена файлов
+# Запуск только по тегу `android-tv-v<версия>`. Номер сверяется с package.json. Имена файлов
 # обязательны: AniMori_<версия>_armv7.apk и _arm64.apk. Отмена: сначала Cancel.
 
 name: release-tv
@@ -6,7 +6,7 @@ name: release-tv
 on:
   push:
     tags:
-      - 'tv-*'
+      - 'android-tv-v*'
 
   # Ручной запуск — для прогона без выпуска: конвейер стоит проверить заранее
   # (sdkmanager, платформа, NDK, npm ci). Пробный прогон публикацию пропускает.
@@ -15,7 +15,7 @@ on:
       tag:
         description: 'Тег выпуска'
         required: true
-        default: 'tv-3.0.2'
+        default: 'android-tv-v3.0.2'
       dry:
         description: 'Пробный прогон: собрать и подписать, но релиз не публиковать'
         type: boolean
@@ -56,14 +56,14 @@ jobs:
           cache: npm
 
       # Номер версии из имени тега и сверка с package.json. Номер берётся образцом,
-      # а не отрезанием приставки: тег tv-3.0 тихо дал бы странное имя файла.
+      # а не отрезанием приставки: тег android-tv-v3.0 тихо дал бы странное имя файла.
       - name: Номер версии из тега
         id: ver
         run: |
           set -euo pipefail
           tag='${{ inputs.tag || github.ref_name }}'
-          if [[ ! "$tag" =~ ^tv-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            echo "::error::Имя тега '$tag' не подходит под tv-<версия>"
+          if [[ ! "$tag" =~ ^android-tv-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::Имя тега '$tag' не подходит под android-tv-v<версия>"
             exit 1
           fi
           version="${BASH_REMATCH[1]}"
@@ -200,8 +200,8 @@ jobs:
         run: |
           set -euo pipefail
           tag='${{ inputs.tag || github.ref_name }}'
-          if [[ ! "$tag" =~ ^tv-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            echo "::error::Имя тега '$tag' не подходит под tv-<версия>"
+          if [[ ! "$tag" =~ ^android-tv-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::Имя тега '$tag' не подходит под android-tv-v<версия>"
             exit 1
           fi
           echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"

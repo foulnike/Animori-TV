@@ -5,7 +5,14 @@ import { ref } from 'vue'
 
 import { Bridge } from '@/bridge'
 
-const RELEASES = 'https://api.github.com/repos/foulnike/Animori-TV/releases?per_page=20'
+// Выпуски лежат в общем репозитории с настольным приложением: код и выпуски живут вместе.
+// Старые сборки приставки смотрят в Animori-TV и потому перестанут находить обновления —
+// их адрес вшит в APK и уже не меняется. Новые смотрят сюда.
+const RELEASES = 'https://api.github.com/repos/foulnike/Animori-Desktop/releases?per_page=30'
+
+/** Приставка тегируется своим именем продукта. Отрезать надо по нему же, а не числом:
+ * длина префикса менялась уже один раз и тихо съела бы номер версии. */
+const TAG_PREFIX = 'android-tv-v'
 
 /** Разрядность устройства → приставка в имени файла выпуска. */
 const SUFFIX: Record<string, string> = {
@@ -66,7 +73,7 @@ function pickAsset(
   return any?.browser_download_url ?? null
 }
 
-/** Один вопрос к GitHub: список выпусков, из них — последний с приставкой `tv-`.
+/** Один вопрос к GitHub: список выпусков, из них — последний с приставкой `android-tv-v`.
  *  Запрос идёт мостом, а не `fetch` окна: весь трафик идёт через оболочку. */
 export async function checkUpdate(): Promise<UpdateOffer | null> {
   const answer = await Bridge.http.request({
@@ -83,9 +90,9 @@ export async function checkUpdate(): Promise<UpdateOffer | null> {
   }>
 
   for (const release of list) {
-    if (!release.tag_name.startsWith('tv-')) continue
+    if (!release.tag_name.startsWith(TAG_PREFIX)) continue
 
-    const version = release.tag_name.slice(3)
+    const version = release.tag_name.slice(TAG_PREFIX.length)
     if (!newer(version, __ANIMORI_VERSION__)) return null
 
     const url = pickAsset(release.assets, version)
