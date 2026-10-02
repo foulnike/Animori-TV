@@ -55,6 +55,17 @@ export interface SnapshotEntry {
    */
   romaji: string | null
   english: string | null
+  /**
+   * Вид, год, число серий и длина серии. Необязательные, и версия снимка из-за
+   * них не поднята: копия, записанная до их появления, просто не имеет этих полей —
+   * снимок читается, а нормализация даёт null. Поднимать версию нельзя: копия от
+   * версии не подходит и не приложилась бы вовсе, то есть отняла бы у человека
+   * весь список целиком.
+   */
+  format?: string | null
+  seasonYear?: number | null
+  episodes?: number | null
+  duration?: number | null
 }
 
 /**
@@ -105,6 +116,11 @@ function dateText(value: unknown): string | null {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null
 }
 
+/** Положительное число или null: ноль и мусор из файла — «нет значения». */
+function countOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+}
+
 /**
  * Приводит прочитанную запись к нынешней форме: файл дубля мог быть правлен руками, а метка
  * взрослого без значения означает «нет». Поля перечислены явно: что не переписано, не идёт на диск.
@@ -127,6 +143,10 @@ function normalizeEntry(entry: SnapshotEntry): SnapshotEntry {
     isAdult: entry.isAdult === true,
     romaji: text(entry.romaji),
     english: text(entry.english),
+    format: text(entry.format),
+    seasonYear: countOrNull(entry.seasonYear),
+    episodes: countOrNull(entry.episodes),
+    duration: countOrNull(entry.duration),
   }
 }
 
