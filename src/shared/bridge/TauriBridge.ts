@@ -363,7 +363,21 @@ const tauriClipboard: IClipboard = {
 
 // Свои команды из lib.rs плюс история WebView. Команды требуют разрешений:
 // build.rs и capabilities.
+/**
+ * Отказ от умения, которого у приставки нет. Промис, а не исключение на месте:
+ * вызывающий код ловит именно отказ, и бросок до возврата обещания сломал бы `.catch`.
+ */
+function refused(what: string): Promise<never> {
+  return Promise.reject(new Error(`${what} на приставке недоступно`))
+}
+
 const tauriShell: IShell = {
+  // Объявление, а не отсутствие методов: интерфейс у продуктов общий, и общий код
+  // вправе спросить `can` вместо того, чтобы гадать по тому, чего в файле нет.
+  // Браузера на телевизоре нет, трансляции нет, полного экрана нет, консоли нет,
+  // историей окна управлять нечем.
+  can: { browser: false, history: false, fullscreen: false, cast: false, devtools: false },
+
   async reload(): Promise<void> {
     await invoke('animori_reload')
   },
@@ -381,6 +395,29 @@ const tauriShell: IShell = {
   async openExternal(url: string): Promise<void> {
     // Проверка схемы на стороне Rust: разметка вправе позвать это с любым адресом.
     await invoke('animori_open_external', { url })
+  },
+
+  // Пять умений, объявленных выше как `false`. Команды animori_toggle_fullscreen,
+  // animori_cast_panel и animori_devtools в Rust приставки нет вовсе, а историей окна
+  // управлять нечем: на телевизере своя навигация пультом.
+  back(): Promise<void> {
+    return refused('История окна')
+  },
+
+  forward(): Promise<void> {
+    return refused('История окна')
+  },
+
+  toggleFullscreen(): Promise<boolean> {
+    return refused('Полный экран')
+  },
+
+  castPanel(): Promise<void> {
+    return refused('Панель трансляции')
+  },
+
+  devtools(): Promise<void> {
+    return refused('Консоль движка')
   },
 }
 
