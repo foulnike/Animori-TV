@@ -27,6 +27,7 @@ function lookupQuery(field: LookupField): string {
       format
       status
       episodes
+      duration
       seasonYear
       averageScore
       isAdult
@@ -61,6 +62,7 @@ interface MediaReply {
   format?: string | null
   status?: string | null
   episodes?: number | null
+  duration?: number | null
   seasonYear?: number | null
   averageScore?: number | null
   isAdult?: boolean | null
@@ -111,6 +113,7 @@ function toBrief(item: MediaReply | null): MediaBrief | null {
     status: textOrNull(item.status),
     episodes: countOrNull(item.episodes),
     chapters: null,
+    duration: countOrNull(item.duration),
     seasonYear: countOrNull(item.seasonYear),
     averageScore: countOrNull(item.averageScore),
     isAdult: item.isAdult === true,

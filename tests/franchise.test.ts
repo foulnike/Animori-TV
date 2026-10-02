@@ -1,5 +1,5 @@
-// Проверки хронологии франшизы (`core/franchise`). Полнота: у Шикимори часть одна — узел
-// дерева с номером MAL, — а AniList дробит её на этапы с общим номером. Числа настоящие.
+// Проверки хронологии франшизы (core/franchise): главное — полнота, ни одна запись AniList не пропадает.
+// Каждый случай берёт модуль заново (vi.resetModules): память франшизы живёт между вызовами.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -8,16 +8,10 @@ import type { FranchiseWork } from '@/core/franchise'
 
 const GRAPHQL_URL = 'https://graphql.anilist.co'
 
-/**
- * Адрес ответа берётся из списка зеркал, а не пишется буквами: жёсткий домен ломался бы
- * при каждой смене порядка обхода — так и вышло, когда `.io` переехал вперёд `.rip`.
- */
+/** Адрес ответа берётся из списка зеркал: жёсткий домен в подмене ломался бы при каждой смене порядка. */
 const SHIKI_HOST = SHIKI_DOMAINS[0] ?? 'shikimori.io'
 
-/**
- * У Шикимори часть одна — номер MAL 61469, — AniList раздробил её на два этапа: первый
- * вышел (1 серия, 47 минут, март 2026), второй с третьим ещё нет (11 серий, сентябрь 2026).
- */
+/** ДжоДжо «Стальной шар»: у Шикимори часть одна (MAL 61469), AniList дробит её на этапы с общим номером MAL. */
 const JOJO_NODES = [
   {
     id: 61469,
@@ -169,8 +163,9 @@ function stagesOf(works: FranchiseWork[] | null, malId: number): FranchiseWork[]
   return (works ?? []).filter((work) => work.malId === malId)
 }
 
-/** Номера записей этих строк: по ним видно и состав, и порядок. */
-function idsOf(works: FranchiseWork[] | null, malId: number): number[] {
+/** Номера записей этих строк: по ним видно и состав, и порядок. У строки без номера
+ * AniList mediaId пуст, и молча выкидывать его отсюда нельзя — состав виден целиком. */
+function idsOf(works: FranchiseWork[] | null, malId: number): (number | null)[] {
   return stagesOf(works, malId).map((work) => work.mediaId)
 }
 
