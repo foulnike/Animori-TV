@@ -1,5 +1,19 @@
 <div align="center">
 
+# Переехало
+
+Код приставки живёт теперь в общем репозитории
+[Animori-Desktop](https://github.com/foulnike/Animori-Desktop) — ветка `main`,
+каталог `apps/android-tv`. Общее ядро — `packages/core`, оно одно на оба приложения.
+
+Репозиторий оставлен в архиве: история и выпуски остаются доступными, новых
+изменений здесь не будет. Свежие сборки: `AniMori_<версия>_armv7.apk` и
+`AniMori_<версия>_arm64.apk` в выпусках Animori-Desktop по тегу `android-tv-v*`.
+
+---
+
+<div align="center">
+
 <img src="https://raw.githubusercontent.com/foulnike/Animori-TV/main/src-tauri/icons/128x128@2x.png" width="128" alt="AniMori">
 
 # AniMori — приложение для AniList на Android TV
