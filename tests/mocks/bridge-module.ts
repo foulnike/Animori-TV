@@ -1,9 +1,7 @@
 import { createMockBridge, type MockBridgeHandle } from './bridge'
 
-/**
- * Вывеска повторяется целиком: без `BridgeHttpError` код, различающий отказ транспорта и
- * отказ моста, падает на `instanceof` и проверяет не тот путь. Класс настоящий.
- */
+/** Подменяет весь модуль `@/bridge`, поэтому обязан повторять его вывеску: код, который берёт
+ * отсюда не только `Bridge`, получит `undefined` и упадёт на первом же `instanceof`. */
 export { BridgeHttpError } from '../../src/shared/bridge/IBridge'
 
 export let currentMock: MockBridgeHandle | null = null

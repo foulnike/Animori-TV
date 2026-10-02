@@ -1,5 +1,5 @@
-// Проверки календаря выхода (`app/screens/home-calendar`). Сдвиг недели, серия в час ночи
-// и пустая клетка в полосе ломаются тихо; неделя считается по местным суткам, не по UTC.
+// Проверки календаря выхода на Главной (app/screens/home-calendar): считать дни — работа, которая ломается тихо.
+// Чистые помощники зовутся прямо (время местное: неделя по местным суткам); состояние модульное — каждый случай берёт модуль заново.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -58,6 +58,7 @@ function brief(mediaId: number, cover: string | null, color: string | null): Med
     status: null,
     episodes: null,
     chapters: null,
+    duration: null,
     seasonYear: null,
     averageScore: null,
     isAdult: false,
@@ -157,10 +158,8 @@ function mal(rows: Array<{ id: number; idMal: number }>) {
   }
 }
 
-/**
- * Пустой ответ на всё остальное: через тот же мост идёт добор имён, и без этой
- * заглушки его запросы попадали бы в счёт «расписание» и ломали порядок проверок.
- */
+/** Пустой ответ на всё остальное: через тот же мост ходит добор имён,
+ *  и без этой заглушки его запросы попадали бы в счёт «расписание». */
 function blank() {
   return {
     status: 200,
@@ -170,6 +169,14 @@ function blank() {
     text: JSON.stringify({ data: {} }),
     url: GRAPHQL_URL,
   }
+}
+
+/**
+ * Область «Моё» задаётся явно: почти все проверки ниже смотрят именно её, и молча
+ * опираться на значение по умолчанию значило бы ловить чужой сбой при его смене.
+ */
+function mine(view: ReturnType<Calendar['useHomeCalendar']>): void {
+  view.scope.value = 'mine'
 }
 
 beforeEach(async () => {
@@ -356,6 +363,7 @@ describe('состояние недели', () => {
     bridge.bridge.anilist.query = query
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([])
 
     expect(query).not.toHaveBeenCalled()
@@ -371,8 +379,8 @@ describe('состояние недели', () => {
     let sent: { variables?: Record<string, unknown> } = {}
     bridge.bridge.anilist.query = async (body: string) => {
       const parsed = JSON.parse(body) as { query: string; variables: Record<string, unknown> }
-      // Добор имён и обложек идёт тем же мостом в те же миллисекунды, поэтому
-      // запоминается только расписание: иначе `sent` достался бы от чужого запроса.
+      // Добор имён и обложек идёт тем же мостом и в те же миллисекунды, поэтому запоминается только
+      // расписание: иначе `sent` достался бы от чужого запроса.
       if (!parsed.query.includes('airingSchedules')) return blank()
 
       sent = parsed
@@ -380,6 +388,7 @@ describe('состояние недели', () => {
     }
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([21, 22])
 
     const start = cal.weekStart(WEDNESDAY.getTime())
@@ -403,6 +412,7 @@ describe('состояние недели', () => {
     }
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([21])
 
     expect(view.failed.value).toBe(true)
@@ -418,6 +428,7 @@ describe('состояние недели', () => {
     }
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([21])
 
     expect(view.failed.value).toBe(true)
@@ -432,6 +443,7 @@ describe('состояние недели', () => {
     bridge.bridge.anilist.query = async () => schedule([])
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([21])
 
     const friday = view.days.value[4]
@@ -446,12 +458,14 @@ describe('состояние недели', () => {
   })
 })
 
+// Срок выхода от текущего мгновения, а не числом: выход с записанной датой попадал бы в показанный день один день в году.
+// Часы настоящие: на замороженных ограничитель AniList ждёт свой промежуток бесконечно, а добор имён ходит тем же мостом.
 describe('имя выхода', () => {
   it('берёт название сервера, когда русского имени нет', async () => {
-    bridge.bridge.anilist.query = async () =>
-      schedule([airing(21, 1179, secs(at(2026, 8, 16, 19, 30)), 'One Piece')])
+    bridge.bridge.anilist.query = async () => schedule([airing(21, 1179, secs(Date.now()), 'One Piece')])
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([21])
 
     expect(view.shown.value?.rows[0]?.title).toBe('One Piece')
@@ -461,10 +475,10 @@ describe('имя выхода', () => {
     // Русское знание главнее: сервер отдаёт ромадзи, а человек читает русское.
     titles.rememberRussianName(21, 'Ван-Пис')
 
-    bridge.bridge.anilist.query = async () =>
-      schedule([airing(21, 1179, secs(at(2026, 8, 16, 19, 30)), 'One Piece')])
+    bridge.bridge.anilist.query = async () => schedule([airing(21, 1179, secs(Date.now()), 'One Piece')])
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([21])
 
     expect(view.shown.value?.rows[0]?.title).toBe('Ван-Пис')
@@ -472,9 +486,10 @@ describe('имя выхода', () => {
 
   it('падает на номер тайтла, когда имени нет нигде', async () => {
     bridge.bridge.anilist.query = async () =>
-      schedule([airing(21, 1179, secs(at(2026, 8, 16, 19, 30)))])
+      schedule([airing(21, 1179, secs(Date.now()))])
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([21])
 
     expect(view.shown.value?.rows[0]?.title).toBe('Аниме #21')
@@ -483,8 +498,8 @@ describe('имя выхода', () => {
 
 describe('обложка выхода', () => {
   it('добирает обложку показанного дня и перерисовывает полку', async () => {
-    // Часы настоящие: ограничитель AniList считает время по `Date.now()` и на замороженных
-    // часах второй запрос не ушёл бы. Срок выхода берётся от текущего мгновения.
+    // Часы настоящие нарочно: ограничитель AniList считает по Date.now(), и на замороженных второй запрос не ушёл бы.
+    // Срок выхода — от текущего мгновения: так выход всегда попадает в показанный день.
     bridge.bridge.anilist.query = async (body: string) => {
       const { query } = JSON.parse(body) as { query: string }
 
@@ -499,6 +514,7 @@ describe('обложка выхода', () => {
     }
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([21])
 
     // Расписание обложек не ждёт: полка встаёт сразу, а картинка приезжает
@@ -513,10 +529,8 @@ describe('обложка выхода', () => {
 })
 
 describe('метки доступности', () => {
-  /**
-   * Поднимает модуль заново с перехваченной постановкой вопроса. Подменяется только
-   * она: остальной склад настоящий и отвечает «не знаю» — склада и видео в тестах нет.
-   */
+  /** Поднимает модуль заново с перехваченной постановкой вопроса; подменяется только она:
+   *  остальной склад настоящий и честно отвечает «не знаю» — склада в проверках нет. */
   async function withPlaySpy(): Promise<{ cal: Calendar; asked: PlayAsk[] }> {
     const asked: PlayAsk[] = []
 
@@ -555,6 +569,7 @@ describe('метки доступности', () => {
     }
 
     const view = fresh.useHomeCalendar()
+    mine(view)
     await view.load([21])
 
     // Срок выхода берётся от текущего мгновения, поэтому выход всегда попадает
@@ -593,6 +608,7 @@ describe('метки доступности', () => {
     }
 
     const view = fresh.useHomeCalendar()
+    mine(view)
     await view.load([21])
 
     // Расписание спрошено, а за номерами дело не пошло: спрашивать не о ком.
@@ -605,8 +621,9 @@ describe('метки доступности', () => {
 // Запас по времени здесь не от медлительности: ограничитель AniList держит
 // две секунды между запросами, а первый в каждом случае уходит сразу.
 describe('область показа', () => {
-  it('начинает со своего', () => {
-    expect(cal.useHomeCalendar().scope.value).toBe('mine')
+  it('начинает с популярного', () => {
+    // Своего списка у только что установившего нет, и календарь открылся бы пустой сеткой.
+    expect(cal.useHomeCalendar().scope.value).toBe('popular')
   })
 
   it('в своём показе спрашивает расписание по переданным номерам', async () => {
@@ -617,6 +634,7 @@ describe('область показа', () => {
     }
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([21, 22])
 
     expect(sent.ids).toEqual([21, 22])
@@ -642,10 +660,11 @@ describe('область показа', () => {
 
       asked.push('расписание')
       sent = variables
-      return schedule([airing(21, 5, secs(at(2026, 8, 16, 19, 30)), 'One Piece')])
+      return schedule([airing(21, 5, secs(Date.now()), 'One Piece')])
     }
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([99])
     await view.setScope('popular', [99])
 
@@ -676,8 +695,8 @@ describe('область показа', () => {
   }, 30000)
 
   it('смена области не сдвигает выбранный день', async () => {
-    // Часы настоящие: ограничитель AniList считает время по `Date.now()` и на замороженных
-    // часах ждал бы свой промежуток бесконечно — проверка висела бы, а не падала.
+    // Часы здесь настоящие нарочно: ограничитель AniList считает время по `Date.now()`, и на
+    // замороженных часах он ждёт свой промежуток бесконечно — проверка не падала бы, а висела.
     bridge.bridge.anilist.query = async (body: string) => {
       const { query } = JSON.parse(body) as { query: string }
       if (query.includes('RELEASING')) return ongoing([21])
@@ -687,6 +706,7 @@ describe('область показа', () => {
     }
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([21])
 
     const sunday = view.days.value[6]
@@ -706,10 +726,11 @@ describe('область показа', () => {
     bridge.bridge.anilist.query = async (body: string) => {
       const { query } = JSON.parse(body) as { query: string }
       if (query.includes('RELEASING')) return ongoing([21])
-      return schedule([airing(21, 5, secs(at(2026, 8, 16, 19, 30)), 'One Piece')])
+      return schedule([airing(21, 5, secs(Date.now()), 'One Piece')])
     }
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([21])
     expect(view.shown.value?.rows).toHaveLength(1)
 
@@ -734,6 +755,7 @@ describe('область показа', () => {
     }
 
     const view = cal.useHomeCalendar()
+    mine(view)
     await view.load([21])
 
     const before = asked

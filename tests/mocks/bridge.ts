@@ -18,6 +18,19 @@ export interface MockBridgeHandle {
   }
 }
 
+/**
+ * Статус ответа из заглушки. По умолчанию 200, но проверке описи датасета
+ * нужен и 304: без него самый частый ответ сервера остался бы непроверенным.
+ */
+function statusOf(payload: unknown): number {
+  if (typeof payload === 'object' && payload !== null && 'status' in payload) {
+    const given = Number((payload as { status: unknown }).status)
+    if (Number.isFinite(given)) return given
+  }
+
+  return 200
+}
+
 /** Заголовки из заглушки: нужны etag описи и его проверка через If-None-Match. */
 function headersOf(payload: unknown): Record<string, string> {
   if (typeof payload === 'object' && payload !== null && 'headers' in payload) {
@@ -102,7 +115,7 @@ export function createMockBridge(options: { filesAvailable?: boolean } = {}): Mo
           handle.calls.http.push({ url: request.url, method: request.method })
           handle.calls.httpHeaders.push(request.headers)
           const response = httpResponses.get(request.url)
-          return textResponse(request.url, response ?? {})
+          return textResponse(request.url, response ?? {}, statusOf(response))
         },
         async requestBytes(request) {
           handle.calls.httpBytes.push({ url: request.url, method: request.method })
@@ -136,6 +149,7 @@ export function createMockBridge(options: { filesAvailable?: boolean } = {}): Mo
         back: vi.fn(),
         forward: vi.fn(),
         toggleFullscreen: vi.fn(),
+        devtools: vi.fn(),
       },
       proxyDiagnostics: {
         status: vi.fn(),
