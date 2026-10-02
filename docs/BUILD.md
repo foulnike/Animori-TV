@@ -39,6 +39,16 @@ adb shell getprop ro.product.cpu.abilist   # abi — только первое �
   `os error 183`. Чистить `.tauri*` надо сразу во всех плагинах, а не по одному.
 - После `rm -rf src-tauri/target` остаётся битая ссылка
   `jniLibs/…/libanimori_lib.so` → `os error 5`. Лечение: `rm -rf …/jniLibs`.
+- **В сборке release журнал приложения в `logcat` не виден.** Android пересылает
+  сообщения консоли WebView в журнал только для отладочных сборок, а `release`
+  помечен `debuggable=false`. То есть `console.log` из интерфейса в установленном
+  APK молчит, и читать на приставке нечего: видны только строки самой системы.
+  Отладочная сборка:
+  ```bash
+  npm run tauri -- android build -t armv7 --debug
+  ```
+  Тогда сообщения идут в `logcat` под меткой `chromium`, и причину сбоя видно.
+  Отладочный APK ставится только после удаления release-сборки: подписи разные.
 
 ## Подпись
 
