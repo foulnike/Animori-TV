@@ -19,8 +19,13 @@ npm run tauri -- android build -t armv7             # APK
 Разрядность устройства проверяют до сборки:
 
 ```bash
-adb shell getprop ro.product.cpu.abi
+adb shell getprop ro.product.cpu.abilist   # abi — только первое из списка
 ```
+
+Выпуск собирает обе разрядности отдельными прогонами, `armv7` и `arm64`;
+`arm64` на 32-разрядной приставке не проверить — нужен телефон. Приставка и
+телефон берут один APK: в манифесте `leanback` и `touchscreen` помечены
+`required="false"`, а `LAUNCHER` стоит рядом с `LEANBACK_LAUNCHER`.
 
 ## Окружение
 
